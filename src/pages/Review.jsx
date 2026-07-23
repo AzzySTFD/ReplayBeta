@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import TrackList from "@/components/TrackList";
 import RatingScale from "@/components/RatingScale";
 import { useToast } from "@/components/ui/use-toast";
-import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X } from "lucide-react";
 
 export default function Review() {
   const { id } = useParams();
@@ -34,8 +34,26 @@ export default function Review() {
   const [reactions, setReactions] = useState([]);
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState("");
+  const [editingCommentText, setEditingCommentText] = useState("");
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
+
+  const getCurrentDisplayName = useCallback(() => {
+    const fromProfile = String(myUsername || "").trim();
+    if (fromProfile) return fromProfile;
+
+    const fromUser = String(user?.username || user?.user_metadata?.username || user?.user_metadata?.user_name || "").trim();
+    if (fromUser) return fromUser;
+
+    const fallbackName = String(user?.full_name || "").trim();
+    if (fallbackName) return fallbackName;
+
+    const emailName = String(user?.email || "").trim();
+    if (emailName) return emailName.split("@")[0];
+
+    return "You";
+  }, [myUsername, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,9 +171,10 @@ export default function Review() {
     if (existing) {
       updatedReactions = nextReactions.filter((item) => !(item.userId === user.id && item.emoji === emoji));
     } else {
+      const currentDisplayName = getCurrentDisplayName();
       updatedReactions = [
         ...nextReactions,
-        { id: `reaction-${Date.now()}`, userId: user.id, userName: user.full_name || user.email || "You", emoji },
+        { id: `reaction-${Date.now()}`, userId: user.id, userName: currentDisplayName, emoji },
       ];
     }
 
@@ -173,12 +192,13 @@ export default function Review() {
     event.preventDefault();
     if (!user || !reviewId || !commentText.trim()) return;
 
+    const currentDisplayName = getCurrentDisplayName();
     const nextComments = [
       ...comments,
       {
         id: `comment-${Date.now()}`,
         userId: user.id,
-        userName: user.full_name || user.email || 'You',
+        userName: currentDisplayName,
         text: commentText.trim(),
         created_at: new Date().toISOString(),
       },
@@ -189,6 +209,62 @@ export default function Review() {
     const review = await db.entities.Review.get(reviewId);
     if (review) {
       await db.entities.Review.update(reviewId, { comments: nextComments });
+    }
+  };
+
+  const handleStartEditComment = (comment) => {
+    if (!comment || comment.userId !== user?.id) return;
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.text || "");
+  };
+
+  const handleCancelEditComment = () => {
+    setEditingCommentId("");
+    setEditingCommentText("");
+  };
+
+  const handleSaveEditComment = async (commentId) => {
+    if (!user || !reviewId || !commentId) return;
+
+    const nextText = editingCommentText.trim();
+    if (!nextText) {
+      toast({ variant: "destructive", title: "Comment cannot be empty" });
+      return;
+    }
+
+    const updatedComments = comments.map((comment) => {
+      if (comment.id !== commentId || comment.userId !== user.id) return comment;
+      return {
+        ...comment,
+        text: nextText,
+        edited_at: new Date().toISOString(),
+      };
+    });
+
+    setComments(updatedComments);
+    setEditingCommentId("");
+    setEditingCommentText("");
+
+    const review = await db.entities.Review.get(reviewId);
+    if (review) {
+      await db.entities.Review.update(reviewId, { comments: updatedComments });
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!user || !reviewId || !commentId) return;
+
+    const updatedComments = comments.filter((comment) => !(comment.id === commentId && comment.userId === user.id));
+    setComments(updatedComments);
+
+    if (editingCommentId === commentId) {
+      setEditingCommentId("");
+      setEditingCommentText("");
+    }
+
+    const review = await db.entities.Review.get(reviewId);
+    if (review) {
+      await db.entities.Review.update(reviewId, { comments: updatedComments });
     }
   };
 
@@ -457,9 +533,53 @@ export default function Review() {
             <div key={comment.id} className="rounded-xl border border-white/10 bg-black/10 p-3">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-sm font-medium text-white/80">{comment.userName}</p>
-                <p className="text-xs text-white/30">{new Date(comment.created_at).toLocaleString()}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-white/30">{new Date(comment.created_at).toLocaleString()}</p>
+                  {comment.userId === user?.id && (
+                    <>
+                      <button
+                        onClick={() => handleStartEditComment(comment)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-xs text-white/60 hover:bg-white/10 hover:text-white"
+                        aria-label="Edit comment"
+                      >
+                        <Pencil className="h-3 w-3" /> Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteComment(comment.id)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2 py-1 text-xs text-red-300 hover:bg-red-500/20"
+                        aria-label="Delete comment"
+                      >
+                        <Trash2 className="h-3 w-3" /> Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              <p className="text-sm text-white/60">{comment.text}</p>
+              {editingCommentId === comment.id && comment.userId === user?.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editingCommentText}
+                    onChange={(e) => setEditingCommentText(e.target.value)}
+                    className="w-full min-h-[80px] rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-stone-500/50"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSaveEditComment(comment.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-stone-500/40 bg-stone-500/10 px-2 py-1 text-xs text-white hover:bg-stone-500/20"
+                    >
+                      <Check className="h-3 w-3" /> Save
+                    </button>
+                    <button
+                      onClick={handleCancelEditComment}
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-xs text-white/70 hover:bg-white/10 hover:text-white"
+                    >
+                      <X className="h-3 w-3" /> Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-white/60">{comment.text}</p>
+              )}
             </div>
           ))}
         </div>

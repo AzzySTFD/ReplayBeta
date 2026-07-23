@@ -2,7 +2,8 @@
 import { useState, useEffect } from "react";
 
 const TOAST_LIMIT = 20;
-const TOAST_REMOVE_DELAY = 3000;
+const TOAST_AUTO_DISMISS_DELAY = 3000;
+const TOAST_REMOVE_DELAY = 300;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -19,6 +20,7 @@ function genId() {
 }
 
 const toastTimeouts = new Map();
+const autoDismissTimeouts = new Map();
 
 const addToRemoveQueue = (toastId) => {
   if (toastTimeouts.has(toastId)) {
@@ -44,6 +46,23 @@ const _clearFromRemoveQueue = (toastId) => {
   }
 };
 
+const clearAutoDismissTimer = (toastId) => {
+  const timeout = autoDismissTimeouts.get(toastId);
+  if (timeout) {
+    clearTimeout(timeout);
+    autoDismissTimeouts.delete(toastId);
+  }
+};
+
+const scheduleAutoDismiss = (toastId) => {
+  clearAutoDismissTimer(toastId);
+  const timeout = setTimeout(() => {
+    autoDismissTimeouts.delete(toastId);
+    dispatch({ type: actionTypes.DISMISS_TOAST, toastId });
+  }, TOAST_AUTO_DISMISS_DELAY);
+  autoDismissTimeouts.set(toastId, timeout);
+};
+
 export const reducer = (state, action) => {
   switch (action.type) {
     case actionTypes.ADD_TOAST:
@@ -62,6 +81,12 @@ export const reducer = (state, action) => {
 
     case actionTypes.DISMISS_TOAST: {
       const { toastId } = action;
+
+      if (toastId) {
+        clearAutoDismissTimer(toastId);
+      } else {
+        state.toasts.forEach((toast) => clearAutoDismissTimer(toast.id));
+      }
 
       // ! Side effects ! - This could be extracted into a dismissToast() action,
       // but I'll keep it here for simplicity
@@ -87,11 +112,14 @@ export const reducer = (state, action) => {
     }
     case actionTypes.REMOVE_TOAST:
       if (action.toastId === undefined) {
+        state.toasts.forEach((toast) => clearAutoDismissTimer(toast.id));
         return {
           ...state,
           toasts: [],
         };
       }
+      clearAutoDismissTimer(action.toastId);
+      _clearFromRemoveQueue(action.toastId);
       return {
         ...state,
         toasts: state.toasts.filter((t) => t.id !== action.toastId),
@@ -134,6 +162,8 @@ function toast({ ...props }) {
     },
   });
 
+  scheduleAutoDismiss(id);
+
   return {
     id,
     dismiss,
@@ -152,7 +182,7 @@ function useToast() {
         listeners.splice(index, 1);
       }
     };
-  }, [state]);
+  }, []);
 
   return {
     ...state,

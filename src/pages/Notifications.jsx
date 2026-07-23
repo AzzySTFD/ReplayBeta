@@ -35,14 +35,16 @@ export default function Notifications() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadNotifications = async () => {
+    const loadNotifications = async (showSpinner = true) => {
       if (!user?.id) {
         setItems([]);
         setLoading(false);
         return;
       }
 
-      setLoading(true);
+      if (showSpinner) {
+        setLoading(true);
+      }
       try {
         const [incomingFollows, myReviews] = await Promise.all([
           db.entities.Follow.filter({ following_id: user.id }, "-created_at", 100),
@@ -121,9 +123,20 @@ export default function Notifications() {
       }
     };
 
-    loadNotifications();
+    loadNotifications(true);
+    const pollId = window.setInterval(() => {
+      loadNotifications(false);
+    }, 15000);
+
+    const handleFocus = () => {
+      loadNotifications(false);
+    };
+
+    window.addEventListener("focus", handleFocus);
     return () => {
       cancelled = true;
+      window.clearInterval(pollId);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [user]);
 
