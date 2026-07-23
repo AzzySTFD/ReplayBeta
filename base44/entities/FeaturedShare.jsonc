@@ -1,0 +1,29 @@
+{
+  "name": "FeaturedShare",
+  "type": "object",
+  "properties": {
+    "album_title": {
+      "type": "string",
+      "title": "Album Title"
+    },
+    "artist": {
+      "type": "string",
+      "title": "Artist"
+    }
+  },
+  "required": [
+    "album_title",
+    "artist"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}

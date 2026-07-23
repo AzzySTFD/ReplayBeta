@@ -1,0 +1,80 @@
+{
+  "name": "Review",
+  "type": "object",
+  "properties": {
+    "album_title": {
+      "type": "string",
+      "title": "Album Title"
+    },
+    "artist": {
+      "type": "string",
+      "title": "Artist"
+    },
+    "album_art_url": {
+      "type": "string",
+      "title": "Album Art URL"
+    },
+    "release_year": {
+      "type": "string",
+      "title": "Release Year"
+    },
+    "username": {
+      "type": "string",
+      "title": "Reviewer Username"
+    },
+    "tracks": {
+      "type": "array",
+      "title": "Tracks",
+      "items": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "type": "number",
+            "title": "Track Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Track Title"
+          },
+          "rating": {
+            "type": "number",
+            "title": "Track Rating"
+          }
+        }
+      }
+    },
+    "album_rating": {
+      "type": "number",
+      "title": "Album Rating"
+    },
+    "use_manual_rating": {
+      "type": "boolean",
+      "title": "Use Manual Rating",
+      "default": false
+    },
+    "manual_rating": {
+      "type": "number",
+      "title": "Manual Rating"
+    },
+    "notes": {
+      "type": "string",
+      "title": "Review Notes"
+    }
+  },
+  "required": [
+    "album_title",
+    "artist"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
