@@ -194,32 +194,34 @@ const createAuthHandlers = () => ({
   },
   loginWithProvider: (_provider, _redirect) => undefined,
   register: async (payload) => {
-    const users = getStoredUsers();
     const normalizedEmail = String(payload.email || '').toLowerCase();
-    const normalizedUsername = String(payload.username || '').trim().toLowerCase();
 
     if (!normalizedEmail || !payload.password) {
       throw new Error('Email and password are required');
     }
 
-    if (users.some((user) => user.email.toLowerCase() === normalizedEmail)) {
-      throw new Error('An account with that email already exists');
-    }
-
-    if (users.some((user) => String(user.username || '').trim().toLowerCase() === normalizedUsername)) {
-      throw new Error('That username is already taken');
-    }
-
-    const user = {
-      id: `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password: payload.password,
+    });
+
+    if (error || !data?.user) {
+      throw new Error(error?.message || 'Registration failed');
+    }
+
+    const existingUsers = getStoredUsers();
+    const user = {
+      id: data.user.id,
+      email: data.user.email || normalizedEmail,
       username: String(payload.username || '').trim(),
-      created_at: new Date().toISOString(),
+      created_at: data.user.created_at || new Date().toISOString(),
     };
 
-    users.push(user);
-    setStoredUsers(users);
+    const nextUsers = existingUsers.some((item) => item.id === user.id)
+      ? existingUsers.map((item) => (item.id === user.id ? { ...item, ...user } : item))
+      : [...existingUsers, user];
+
+    setStoredUsers(nextUsers);
 
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('track-by-track-session', user.id);
