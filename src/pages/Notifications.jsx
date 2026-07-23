@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Heart, MessageCircle, UserPlus, Loader2, ChevronRight } from "lucide-react";
-import { db } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
+import { clearNotifications, fetchNotificationItems, markNotificationsSeen } from "@/lib/notifications";
 
 const eventTime = (value) => {
   if (!value) return 0;
@@ -31,6 +31,7 @@ export default function Notifications() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,70 +47,10 @@ export default function Notifications() {
         setLoading(true);
       }
       try {
-        const [incomingFollows, myReviews] = await Promise.all([
-          db.entities.Follow.filter({ following_id: user.id }, "-created_at", 100),
-          db.entities.Review.filter({ created_by_id: user.id }, "-updated_date", 200),
-        ]);
-
-        const followerIds = [...new Set((incomingFollows || []).map((item) => item.created_by_id).filter(Boolean))];
-        const followerProfiles = await Promise.all(
-          followerIds.map(async (followerId) => {
-            const rows = await db.entities.Profile.filter({ created_by_id: followerId });
-            return { id: followerId, username: rows[0]?.username || "Someone" };
-          })
-        );
-        const followerNameById = new Map(followerProfiles.map((entry) => [entry.id, entry.username]));
-
-        const events = [];
-
-        for (const follow of incomingFollows) {
-          const followerName = followerNameById.get(follow.created_by_id) || "Someone";
-          events.push({
-            id: `follow-${follow.id}`,
-            type: "follow",
-            title: `${followerName} followed you`,
-            description: "You have a new follower.",
-            created_at: follow.created_at,
-            icon: "follow",
-            href: "/discover",
-          });
-        }
-
-        for (const review of myReviews) {
-          const reviewHref = `/review/${review.id}`;
-          const reactions = Array.isArray(review.reactions) ? review.reactions : [];
-          const comments = Array.isArray(review.comments) ? review.comments : [];
-
-          for (const reaction of reactions) {
-            if (!reaction || reaction.userId === user.id) continue;
-            events.push({
-              id: `reaction-${review.id}-${reaction.id || reaction.userId || Math.random()}`,
-              type: "reaction",
-              title: `${reaction.userName || "Someone"} reacted ${reaction.emoji || ""}`.trim(),
-              description: `On your review of ${review.album_title || "an album"}.`,
-              created_at: review.updated_at || review.created_at,
-              icon: "reaction",
-              href: reviewHref,
-            });
-          }
-
-          for (const comment of comments) {
-            if (!comment || comment.userId === user.id) continue;
-            events.push({
-              id: `comment-${review.id}-${comment.id || comment.userId || Math.random()}`,
-              type: "comment",
-              title: `${comment.userName || "Someone"} commented on your review`,
-              description: comment.text || `On your review of ${review.album_title || "an album"}.`,
-              created_at: comment.created_at || review.updated_at || review.created_at,
-              icon: "comment",
-              href: reviewHref,
-            });
-          }
-        }
-
-        events.sort((a, b) => eventTime(b.created_at) - eventTime(a.created_at));
+        const events = await fetchNotificationItems(user.id);
         if (!cancelled) {
           setItems(events);
+          markNotificationsSeen(user.id);
         }
       } catch (error) {
         console.error(error);
@@ -142,6 +83,14 @@ export default function Notifications() {
 
   const grouped = useMemo(() => items.slice(0, 100), [items]);
 
+  const handleClearAlerts = () => {
+    if (!user?.id || grouped.length === 0) return;
+    setClearing(true);
+    clearNotifications(user.id, grouped);
+    setItems([]);
+    setClearing(false);
+  };
+
   const iconFor = (kind) => {
     if (kind === "follow") return <UserPlus className="h-4 w-4" />;
     if (kind === "comment") return <MessageCircle className="h-4 w-4" />;
@@ -158,9 +107,18 @@ export default function Notifications() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex items-center gap-2">
-        <Bell className="h-5 w-5 text-stone-400" />
-        <h1 className="text-2xl font-bold">Notifications</h1>
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Bell className="h-5 w-5 text-stone-400" />
+          <h1 className="text-2xl font-bold">Notifications</h1>
+        </div>
+        <button
+          onClick={handleClearAlerts}
+          disabled={grouped.length === 0 || clearing}
+          className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {clearing ? "Clearing..." : "Clear alerts"}
+        </button>
       </div>
 
       {grouped.length === 0 ? (

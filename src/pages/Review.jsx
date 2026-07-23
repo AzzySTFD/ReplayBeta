@@ -290,6 +290,11 @@ export default function Review() {
     }
   };
 
+  const handleGoToUserProfile = (commentUserId) => {
+    if (!commentUserId) return;
+    navigate(`/user/${commentUserId}`);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -541,7 +546,16 @@ export default function Review() {
           {comments.map((comment) => (
             <div key={comment.id} className="rounded-xl border border-white/10 bg-black/10 p-3">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-medium text-white/80">{comment.userName}</p>
+                {comment.userId ? (
+                  <button
+                    onClick={() => handleGoToUserProfile(comment.userId)}
+                    className="text-sm font-medium text-stone-300 hover:text-stone-200 hover:underline"
+                  >
+                    {comment.userName}
+                  </button>
+                ) : (
+                  <p className="text-sm font-medium text-white/80">{comment.userName}</p>
+                )}
                 <div className="flex items-center gap-2">
                   <p className="text-xs text-white/30">{new Date(comment.created_at).toLocaleString()}</p>
                   {comment.userId === user?.id && (

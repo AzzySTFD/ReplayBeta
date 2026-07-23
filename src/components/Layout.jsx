@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { Disc, Compass, User as UserIcon, LogOut, Home as HomeIcon, Bell } from "lucide-react";
 import { db } from "@/api/base44Client";
+import { computeUnreadCount, fetchNotificationItems } from "@/lib/notifications";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -12,6 +13,7 @@ export default function Layout() {
   useDarkMode();
 
   const [profile, setProfile] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -24,6 +26,43 @@ export default function Layout() {
     };
     if (user) loadProfile();
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadUnread = async () => {
+      if (!user?.id) {
+        if (!cancelled) setUnreadCount(0);
+        return;
+      }
+
+      try {
+        const items = await fetchNotificationItems(user.id);
+        if (!cancelled) {
+          const count = location.pathname === "/notifications" ? 0 : computeUnreadCount(items, user.id);
+          setUnreadCount(count);
+        }
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) setUnreadCount(0);
+      }
+    };
+
+    loadUnread();
+    const pollId = window.setInterval(loadUnread, 15000);
+    const handleFocus = () => loadUnread();
+    const handleNotificationsUpdate = () => loadUnread();
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("notifications:updated", handleNotificationsUpdate);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollId);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("notifications:updated", handleNotificationsUpdate);
+    };
+  }, [user, location.pathname]);
 
   const getPageTitle = () => {
     const path = location.pathname;
@@ -61,7 +100,14 @@ export default function Layout() {
                 to={item.to}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors"
               >
-                <item.icon className="w-4 h-4" />
+                <span className="relative inline-flex">
+                  <item.icon className="w-4 h-4" />
+                  {item.to === "/notifications" && unreadCount > 0 && (
+                    <span className="absolute -right-2 -top-2 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
                 <span>{item.label}</span>
               </Link>
             ))}
@@ -123,7 +169,14 @@ export default function Layout() {
                   active ? "text-stone-300" : "text-white/40"
                 }`}
               >
-                <item.icon className="w-5 h-5" />
+                <span className="relative inline-flex">
+                  <item.icon className="w-5 h-5" />
+                  {item.to === "/notifications" && unreadCount > 0 && (
+                    <span className="absolute -right-2 -top-2 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
                 <span className="text-[10px] font-semibold leading-none">{item.label}</span>
               </Link>
             );
