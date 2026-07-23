@@ -19,6 +19,7 @@ import Review from './pages/Review';
 import ProfilePage from './pages/ProfilePage';
 import Discover from './pages/Discover';
 import UserProfile from './pages/UserProfile';
+import Notifications from './pages/Notifications';
 
 const MotionPage = ({ children }) => (
   <motion.div
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
           <Route element={<Layout />}>
             <Route path="/" element={<MotionPage><Home /></MotionPage>} />
             <Route path="/discover" element={<MotionPage><Discover /></MotionPage>} />
+            <Route path="/notifications" element={<MotionPage><Notifications /></MotionPage>} />
             <Route path="/profile" element={<MotionPage><ProfilePage /></MotionPage>} />
             <Route path="/user/:userId" element={<MotionPage><UserProfile /></MotionPage>} />
             <Route path="/review/:id" element={<MotionPage><Review /></MotionPage>} />

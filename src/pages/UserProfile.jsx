@@ -9,6 +9,36 @@ import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import PullToRefresh from "@/components/PullToRefresh";
 import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen } from "lucide-react";
 
+const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
+
+const ensureHttp = (value = "") => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
+
+const buildSocialHref = (key, value = "") => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  const handle = normalizeHandle(trimmed);
+  if (!handle) return "";
+
+  if (key === "instagram") return `https://instagram.com/${handle}`;
+  if (key === "twitter") return `https://x.com/${handle}`;
+  if (key === "tiktok") return `https://www.tiktok.com/@${handle}`;
+  if (key === "twitch") return `https://twitch.tv/${handle}`;
+  if (key === "youtube") {
+    if (handle.startsWith("channel/") || handle.startsWith("c/") || handle.startsWith("@")) {
+      return `https://youtube.com/${handle}`;
+    }
+    return `https://youtube.com/@${handle}`;
+  }
+  if (key === "kick") return `https://kick.com/${handle}`;
+  return ensureHttp(handle);
+};
+
 export default function UserProfile() {
   const { userId } = useParams();
   const { user: currentUser } = useAuth();
@@ -19,18 +49,39 @@ export default function UserProfile() {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [followRecord, setFollowRecord] = useState(null);
+  const [followers, setFollowers] = useState([]);
+  const [following, setFollowing] = useState([]);
+  const [openConnections, setOpenConnections] = useState("");
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
-      const [profiles, userReviews, myFollows, userFolders] = await Promise.all([
+      const [profiles, userReviews, myFollows, userFolders, followersOfUser, followingByUser] = await Promise.all([
         db.entities.Profile.filter({ created_by_id: userId }),
         db.entities.Review.filter({ created_by_id: userId }, "-updated_date", 50),
         currentUser
           ? db.entities.Follow.filter({ created_by_id: currentUser.id, following_id: userId })
           : Promise.resolve([]),
         db.entities.Folder.filter({ created_by_id: userId }),
+        db.entities.Follow.filter({ following_id: userId }),
+        db.entities.Follow.filter({ created_by_id: userId }),
       ]);
+
+      const followerIds = [...new Set((followersOfUser || []).map((row) => row.created_by_id).filter(Boolean))];
+      const followerProfiles = await Promise.all(
+        followerIds.map(async (followerId) => {
+          const matches = await db.entities.Profile.filter({ created_by_id: followerId });
+          return {
+            id: followerId,
+            username: matches[0]?.username || "Unknown user",
+          };
+        })
+      );
+
+      const followingEntries = (followingByUser || []).map((row) => ({
+        id: row.following_id,
+        username: row.following_username || "Unknown user",
+      }));
 
       const allReviews = await db.entities.Review.list("-updated_date", 200);
       const profile = profiles[0] || null;
@@ -45,7 +96,10 @@ export default function UserProfile() {
       if (profiles.length > 0) setProfile(profiles[0]);
       setReviews(resolvedReviews);
       setFolders(userFolders);
+      setFollowers(followerProfiles);
+      setFollowing(followingEntries);
       if (myFollows.length > 0) setFollowRecord(myFollows[0]);
+      if (myFollows.length === 0) setFollowRecord(null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -65,6 +119,7 @@ export default function UserProfile() {
       setFollowRecord(null);
       try {
         await db.entities.Follow.delete(prev.id);
+        await loadData();
       } catch (e) {
         setFollowRecord(prev);
         toast({ variant: "destructive", title: "Error", description: "Failed to unfollow" });
@@ -83,6 +138,7 @@ export default function UserProfile() {
           following_username: profile?.username || "",
         });
         setFollowRecord(created);
+        await loadData();
       } catch (e) {
         setFollowRecord(null);
         toast({ variant: "destructive", title: "Error", description: "Failed to follow" });
@@ -197,7 +253,8 @@ export default function UserProfile() {
           {socialEntries.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {socialEntries.map(([key, value]) => {
-                const href = value.startsWith("http") ? value : `https://${value}`;
+                const href = buildSocialHref(key, String(value || ""));
+                if (!href) return null;
                 return (
                   <a
                     key={key}
@@ -214,6 +271,21 @@ export default function UserProfile() {
               })}
             </div>
           )}
+
+          <div className="mt-4 flex flex-wrap gap-2 text-sm">
+            <button
+              onClick={() => setOpenConnections("followers")}
+              className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-white/80 hover:bg-white/[0.06]"
+            >
+              <span className="font-semibold text-white">{followers.length}</span> Followers
+            </button>
+            <button
+              onClick={() => setOpenConnections("following")}
+              className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-white/80 hover:bg-white/[0.06]"
+            >
+              <span className="font-semibold text-white">{following.length}</span> Following
+            </button>
+          </div>
         </div>
         {!isOwn && (
           <button
@@ -232,6 +304,39 @@ export default function UserProfile() {
           </button>
         )}
       </div>
+
+      {openConnections && (
+        <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/70">
+              {openConnections === "followers" ? "Followers" : "Following"}
+            </h2>
+            <button
+              onClick={() => setOpenConnections("")}
+              className="text-xs text-white/50 hover:text-white"
+            >
+              Close
+            </button>
+          </div>
+
+          {(openConnections === "followers" ? followers : following).length === 0 ? (
+            <p className="text-sm text-white/40">No users to show yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {(openConnections === "followers" ? followers : following).map((entry) => (
+                <button
+                  key={`${openConnections}-${entry.id}-${entry.username}`}
+                  onClick={() => entry.id && navigate(`/user/${entry.id}`)}
+                  className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06]"
+                >
+                  <span>{entry.username}</span>
+                  <ChevronRight className="h-4 w-4 text-white/40" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 mb-6">
         <div className="flex items-center gap-2 mb-3">

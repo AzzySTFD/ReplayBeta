@@ -6,6 +6,7 @@ const DEFAULT_THEME = {
   mode: "solid",
   accent: "#8a8378",
   accent2: "#6b7280",
+  textColor: "#ffffff",
 };
 
 export default function ThemeCustomizer() {
@@ -22,11 +23,13 @@ export default function ThemeCustomizer() {
       setTheme(nextTheme);
       document.documentElement.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
       document.documentElement.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
+      document.documentElement.style.setProperty('--theme-text-color', nextTheme.textColor);
       document.documentElement.style.setProperty('--theme-style', nextTheme.mode);
       document.body.classList.toggle('app-theme-gradient', nextTheme.mode === 'gradient');
       document.body.classList.toggle('app-theme-solid', nextTheme.mode === 'solid');
       document.body.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
       document.body.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
+      document.body.style.setProperty('--theme-text-color', nextTheme.textColor);
     };
 
     const handleThemeEvent = (event) => applyTheme(event.detail);
@@ -39,11 +42,13 @@ export default function ThemeCustomizer() {
     const nextTheme = { ...DEFAULT_THEME, ...(value || {}) };
     document.documentElement.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
     document.documentElement.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
+    document.documentElement.style.setProperty('--theme-text-color', nextTheme.textColor);
     document.documentElement.style.setProperty('--theme-style', nextTheme.mode);
     document.body.classList.toggle('app-theme-gradient', nextTheme.mode === 'gradient');
     document.body.classList.toggle('app-theme-solid', nextTheme.mode === 'solid');
     document.body.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
     document.body.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
+    document.body.style.setProperty('--theme-text-color', nextTheme.textColor);
   };
 
   const updateTheme = (updates) => {
@@ -80,7 +85,7 @@ export default function ThemeCustomizer() {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <label className="space-y-2">
             <span className="text-xs uppercase tracking-wider text-white/40">Primary color</span>
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
@@ -104,6 +109,19 @@ export default function ThemeCustomizer() {
                 className="h-9 w-12 cursor-pointer rounded border-0 bg-transparent p-0"
               />
               <span className="text-sm text-white/70">{theme.accent2}</span>
+            </div>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs uppercase tracking-wider text-white/40">Text color</span>
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
+              <input
+                type="color"
+                value={theme.textColor}
+                onChange={(event) => updateTheme({ textColor: event.target.value })}
+                className="h-9 w-12 cursor-pointer rounded border-0 bg-transparent p-0"
+              />
+              <span className="text-sm text-white/70">{theme.textColor}</span>
             </div>
           </label>
         </div>

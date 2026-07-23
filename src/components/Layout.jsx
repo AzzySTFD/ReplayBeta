@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 
 import { useDarkMode } from "@/hooks/useDarkMode";
-import { Disc, Compass, User as UserIcon, LogOut, Home as HomeIcon } from "lucide-react";
+import { Disc, Compass, User as UserIcon, LogOut, Home as HomeIcon, Bell } from "lucide-react";
 import { db } from "@/api/base44Client";
 
 export default function Layout() {
@@ -29,6 +29,7 @@ export default function Layout() {
     const path = location.pathname;
     if (path === "/") return "ReplayReviews";
     if (path === "/discover") return "Discover";
+    if (path === "/notifications") return "Notifications";
     if (path === "/profile") return "Profile";
     if (path.startsWith("/user/")) return "User";
     if (path.startsWith("/review/")) return "Review";
@@ -38,6 +39,7 @@ export default function Layout() {
   const navItems = [
     { to: "/", label: "Home", icon: HomeIcon },
     { to: "/discover", label: "Discover", icon: Compass },
+    { to: "/notifications", label: "Alerts", icon: Bell },
     { to: "/profile", label: "Profile", icon: UserIcon },
   ];
 

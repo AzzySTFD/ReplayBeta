@@ -881,7 +881,24 @@ const createAuthHandlers = () => ({
 
     return { ok: true, user };
   },
-  loginWithProvider: (_provider, _redirect) => undefined,
+  loginWithProvider: async (_provider, _redirect) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const redirectTo = _redirect
+      ? new URL(_redirect, window.location.origin).toString()
+      : window.location.origin;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: _provider,
+      options: { redirectTo },
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Provider login failed');
+    }
+  },
   register: async (payload) => {
     const normalizedEmail = String(payload.email || '').toLowerCase();
 
