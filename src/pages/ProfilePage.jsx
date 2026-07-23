@@ -185,6 +185,11 @@ export default function ProfilePage() {
     }
   };
 
+  const handleViewPublicProfile = () => {
+    if (!user?.id) return;
+    navigate(`/user/${user.id}`);
+  };
+
   const extractImportQuery = (value) => {
     const trimmed = value.trim();
     if (!trimmed) return "";
@@ -511,6 +516,32 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-white/80">Profile actions</h3>
+              <p className="text-sm text-white/50">Open your public profile or sign out from this device.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                onClick={handleViewPublicProfile}
+                disabled={!user?.id}
+                className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06]"
+              >
+                View my public profile
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => logout()}
+                className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06]"
+              >
+                Logout
+              </Button>
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={handleSave}
@@ -524,7 +555,7 @@ export default function ProfilePage() {
           {profile?.created_by_id && (
             <Button
               variant="outline"
-              onClick={() => navigate(`/user/${profile.created_by_id}`)}
+              onClick={handleViewPublicProfile}
               className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06]"
             >
               View my public profile

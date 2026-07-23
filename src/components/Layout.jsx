@@ -79,12 +79,23 @@ export default function Layout() {
         className="sm:hidden sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-white/5"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <div className="h-16 flex items-center justify-center px-4">
-          <div className="flex items-center gap-2">
+        <div className="h-16 grid grid-cols-[1fr_auto_1fr] items-center px-4 gap-3">
+          <div />
+          <div className="flex items-center justify-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center">
               <Disc className="w-3.5 h-3.5 text-white" />
             </div>
             <h1 className="font-bold text-lg">{getPageTitle()}</h1>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => logout()}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
