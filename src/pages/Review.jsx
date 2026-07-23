@@ -163,28 +163,23 @@ export default function Review() {
 
   const handleReaction = async (emoji) => {
     if (!user || !reviewId) return;
-
-    const nextReactions = [...reactions];
-    const existing = nextReactions.find((item) => item.userId === user.id && item.emoji === emoji);
-    let updatedReactions;
-
-    if (existing) {
-      updatedReactions = nextReactions.filter((item) => !(item.userId === user.id && item.emoji === emoji));
-    } else {
+    try {
       const currentDisplayName = getCurrentDisplayName();
-      updatedReactions = [
-        ...nextReactions,
-        { id: `reaction-${Date.now()}`, userId: user.id, userName: currentDisplayName, emoji },
-      ];
-    }
-
-    setReactions(updatedReactions);
-
-    const review = await db.entities.Review.get(reviewId);
-    if (review) {
-      await db.entities.Review.update(reviewId, {
-        reactions: updatedReactions,
+      const resp = await db.functions.invoke("reviewInteractions", {
+        action: "reaction_toggle",
+        reviewId,
+        userId: user.id,
+        userName: currentDisplayName,
+        emoji,
       });
+
+      setReactions(resp?.data?.reactions || []);
+      if (Array.isArray(resp?.data?.comments)) {
+        setComments(resp.data.comments);
+      }
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Error", description: e.message || "Could not save reaction." });
     }
   };
 
@@ -192,23 +187,24 @@ export default function Review() {
     event.preventDefault();
     if (!user || !reviewId || !commentText.trim()) return;
 
-    const currentDisplayName = getCurrentDisplayName();
-    const nextComments = [
-      ...comments,
-      {
-        id: `comment-${Date.now()}`,
+    try {
+      const currentDisplayName = getCurrentDisplayName();
+      const resp = await db.functions.invoke("reviewInteractions", {
+        action: "comment_add",
+        reviewId,
         userId: user.id,
         userName: currentDisplayName,
         text: commentText.trim(),
-        created_at: new Date().toISOString(),
-      },
-    ];
-    setComments(nextComments);
-    setCommentText("");
+      });
 
-    const review = await db.entities.Review.get(reviewId);
-    if (review) {
-      await db.entities.Review.update(reviewId, { comments: nextComments });
+      setComments(resp?.data?.comments || []);
+      if (Array.isArray(resp?.data?.reactions)) {
+        setReactions(resp.data.reactions);
+      }
+      setCommentText("");
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Error", description: e.message || "Could not save comment." });
     }
   };
 
@@ -232,39 +228,52 @@ export default function Review() {
       return;
     }
 
-    const updatedComments = comments.map((comment) => {
-      if (comment.id !== commentId || comment.userId !== user.id) return comment;
-      return {
-        ...comment,
+    try {
+      const resp = await db.functions.invoke("reviewInteractions", {
+        action: "comment_edit",
+        reviewId,
+        userId: user.id,
+        userName: getCurrentDisplayName(),
+        commentId,
         text: nextText,
-        edited_at: new Date().toISOString(),
-      };
-    });
+      });
 
-    setComments(updatedComments);
-    setEditingCommentId("");
-    setEditingCommentText("");
-
-    const review = await db.entities.Review.get(reviewId);
-    if (review) {
-      await db.entities.Review.update(reviewId, { comments: updatedComments });
+      setComments(resp?.data?.comments || []);
+      if (Array.isArray(resp?.data?.reactions)) {
+        setReactions(resp.data.reactions);
+      }
+      setEditingCommentId("");
+      setEditingCommentText("");
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Error", description: e.message || "Could not edit comment." });
     }
   };
 
   const handleDeleteComment = async (commentId) => {
     if (!user || !reviewId || !commentId) return;
 
-    const updatedComments = comments.filter((comment) => !(comment.id === commentId && comment.userId === user.id));
-    setComments(updatedComments);
+    try {
+      const resp = await db.functions.invoke("reviewInteractions", {
+        action: "comment_delete",
+        reviewId,
+        userId: user.id,
+        userName: getCurrentDisplayName(),
+        commentId,
+      });
 
-    if (editingCommentId === commentId) {
-      setEditingCommentId("");
-      setEditingCommentText("");
-    }
+      setComments(resp?.data?.comments || []);
+      if (Array.isArray(resp?.data?.reactions)) {
+        setReactions(resp.data.reactions);
+      }
 
-    const review = await db.entities.Review.get(reviewId);
-    if (review) {
-      await db.entities.Review.update(reviewId, { comments: updatedComments });
+      if (editingCommentId === commentId) {
+        setEditingCommentId("");
+        setEditingCommentText("");
+      }
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Error", description: e.message || "Could not delete comment." });
     }
   };
 

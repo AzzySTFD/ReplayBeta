@@ -1081,6 +1081,26 @@ const localFunctions = {
       return { data: body };
     }
 
+    if (name === 'reviewInteractions') {
+      const response = await fetch(`${getApiBaseUrl()}/api/reviews/interactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error('Review interactions failed', errorBody);
+        if (response.status === 503) {
+          throw new Error('Review interactions are unavailable. Missing server configuration.');
+        }
+        throw new Error('Failed to save interaction on this review.');
+      }
+
+      const body = await response.json();
+      return { data: body };
+    }
+
     return { data: {} };
   },
 };
