@@ -23,6 +23,35 @@ const writeStore = (store) => {
   memoryStore = store;
 };
 
+const migrateLegacyDevUserData = (currentUserId) => {
+  if (!currentUserId) return;
+
+  const store = readStore();
+  const entityNames = ['Profile', 'Review', 'Folder', 'Follow'];
+  let changed = false;
+
+  for (const entityName of entityNames) {
+    const rows = Array.isArray(store[entityName]) ? store[entityName] : [];
+    const hasCurrentRows = rows.some((row) => row.created_by_id === currentUserId);
+
+    // Only migrate when legacy rows exist and current-user rows do not, to avoid accidental merges.
+    if (!hasCurrentRows) {
+      const migrated = rows.map((row) => {
+        if (row.created_by_id === 'dev-user') {
+          changed = true;
+          return { ...row, created_by_id: currentUserId };
+        }
+        return row;
+      });
+      store[entityName] = migrated;
+    }
+  }
+
+  if (changed) {
+    writeStore(store);
+  }
+};
+
 const createEntityCollection = (entityName) => ({
   list: async () => {
     const store = readStore();
@@ -116,7 +145,11 @@ const createAuthHandlers = () => ({
     if (!session) return null;
 
     const users = getStoredUsers();
-    return users.find((user) => user.id === session) || null;
+    const currentUser = users.find((user) => user.id === session) || null;
+    if (currentUser) {
+      migrateLegacyDevUserData(currentUser.id);
+    }
+    return currentUser;
   },
   logout: () => {
     if (typeof window !== 'undefined') {
@@ -235,7 +268,13 @@ const localFunctions = {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error('Spotify search failed', errorBody);
-        return { data: { albums: [] } };
+        if (response.status === 404) {
+          throw new Error('Search API route is missing in this deployment.');
+        }
+        if (response.status === 500 || response.status === 503) {
+          throw new Error('Spotify search is unavailable. Check SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET on the server.');
+        }
+        throw new Error('Spotify search failed. Please try again.');
       }
 
       const body = await response.json();
@@ -251,7 +290,13 @@ const localFunctions = {
       if (!response.ok) {
         const errorBody = await response.text();
         console.error('Spotify album tracks failed', errorBody);
-        return { data: { tracks: [] } };
+        if (response.status === 404) {
+          throw new Error('Album tracks API route is missing in this deployment.');
+        }
+        if (response.status === 500 || response.status === 503) {
+          throw new Error('Album track lookup is unavailable. Check SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET on the server.');
+        }
+        throw new Error('Failed to load album tracks.');
       }
 
       const body = await response.json();

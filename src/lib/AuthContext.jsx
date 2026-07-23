@@ -1,5 +1,4 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { appParams } from '@/lib/app-params';
 import { db } from '@/api/base44Client';
 
 const AuthContext = createContext(null);
@@ -19,22 +18,10 @@ export const AuthProvider = ({ children }) => {
 
   const checkAppState = async () => {
     try {
-      setUser({
-        id: 'dev-user',
-        full_name: 'Developer',
-        email: 'dev@localhost',
-      });
-
-      setIsAuthenticated(true);
-      setAuthChecked(true);
-      setIsLoadingAuth(false);
-      setIsLoadingPublicSettings(false);
       setAuthError(null);
       setAppPublicSettings({ public_settings: {} });
-
-      if (appParams?.token) {
-        await checkUserAuth();
-      }
+      await checkUserAuth();
+      setIsLoadingPublicSettings(false);
     } catch (error) {
       console.error('Unexpected error:', error);
       setAuthError({
@@ -50,12 +37,8 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoadingAuth(true);
       const currentUser = await db.auth.me();
-      setUser(currentUser || {
-        id: 'dev-user',
-        full_name: 'Developer',
-        email: 'dev@localhost',
-      });
-      setIsAuthenticated(true);
+      setUser(currentUser || null);
+      setIsAuthenticated(Boolean(currentUser));
       setIsLoadingAuth(false);
       setAuthChecked(true);
     } catch (error) {

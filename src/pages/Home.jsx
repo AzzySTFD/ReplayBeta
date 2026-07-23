@@ -14,6 +14,7 @@ export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [results, setResults] = useState([]);
+  const [searchError, setSearchError] = useState("");
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [reviews, setReviews] = useState([]);
@@ -89,12 +90,14 @@ export default function Home() {
   const handleSearch = async (query) => {
     setSearching(true);
     setHasSearched(true);
+    setSearchError("");
     try {
       const resp = await db.functions.invoke("spotifySearch", { query });
       setResults(resp.data.albums || []);
     } catch (e) {
       console.error(e);
       setResults([]);
+      setSearchError(e?.message || "Search is currently unavailable. Please try again.");
     } finally {
       setSearching(false);
     }
@@ -164,7 +167,7 @@ export default function Home() {
           ) : results.length === 0 ? (
             <div className="text-center py-16 text-white/30">
               <Disc className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No albums found. Try a different search.</p>
+              <p>{searchError || "No albums found. Try a different search."}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
