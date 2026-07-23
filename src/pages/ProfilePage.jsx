@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/api/base44Client";
 
@@ -23,6 +24,7 @@ import ThemeCustomizer from "@/components/ThemeCustomizer";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [profile, setProfile] = useState(null);
   const [username, setUsername] = useState("");
@@ -522,7 +524,7 @@ export default function ProfilePage() {
           {profile?.created_by_id && (
             <Button
               variant="outline"
-              onClick={() => window.location.href = `/user/${profile.created_by_id}`}
+              onClick={() => navigate(`/user/${profile.created_by_id}`)}
               className="border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.06]"
             >
               View my public profile
