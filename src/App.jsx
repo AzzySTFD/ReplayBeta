@@ -33,7 +33,8 @@ const MotionPage = ({ children }) => (
 
 const AuthenticatedApp = () => {
   const location = useLocation();
-  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const authRoutes = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
 
   // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -47,6 +48,10 @@ const AuthenticatedApp = () => {
   // Handle authentication errors
   if (authError && authError.type === 'user_not_registered') {
     return <UserNotRegisteredError />;
+  }
+
+  if (!isAuthenticated && !authRoutes.has(location.pathname)) {
+    return <Navigate to="/login" replace />;
   }
 
   // Render the main app

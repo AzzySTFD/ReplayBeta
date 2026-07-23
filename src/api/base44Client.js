@@ -1,5 +1,8 @@
+import { createClient } from '@supabase/supabase-js';
+
 const STORAGE_KEY = 'track-by-track-local-store-v1';
 let memoryStore = {};
+const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 const readStore = () => {
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -158,11 +161,30 @@ const createAuthHandlers = () => ({
   },
   redirectToLogin: () => undefined,
   loginViaEmailPassword: async (email, password) => {
-    const users = getStoredUsers();
-    const user = users.find((item) => item.email.toLowerCase() === String(email).toLowerCase());
-    if (!user || user.password !== password) {
-      throw new Error('Invalid email or password');
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (error || !data?.user) {
+      throw new Error(error?.message || 'Invalid email or password');
     }
+
+    const existingUsers = getStoredUsers();
+    const user = {
+      id: data.user.id,
+      email: data.user.email || normalizedEmail,
+      username: data.user.user_metadata?.username || data.user.user_metadata?.user_name || '',
+      full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.display_name || '',
+      created_at: data.user.created_at || new Date().toISOString(),
+    };
+
+    const nextUsers = existingUsers.some((item) => item.id === user.id)
+      ? existingUsers.map((item) => (item.id === user.id ? { ...item, ...user } : item))
+      : [...existingUsers, user];
+
+    setStoredUsers(nextUsers);
 
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('track-by-track-session', user.id);
