@@ -1018,7 +1018,14 @@ const localFunctions = {
     }
 
     if (name === 'spotifyAlbumTracks') {
-      const response = await fetch(`${getApiBaseUrl()}/api/spotify/albums/${encodeURIComponent(payload.albumId || '')}/tracks`);
+      const albumId = encodeURIComponent(payload.albumId || '');
+      let response = await fetch(`${getApiBaseUrl()}/api/spotify/albums/tracks?albumId=${albumId}`);
+
+      // Compatibility fallback for environments still using the original dynamic route.
+      if (response.status === 404) {
+        response = await fetch(`${getApiBaseUrl()}/api/spotify/albums/${albumId}/tracks`);
+      }
+
       if (!response.ok) {
         const errorBody = await response.text();
         console.error('Spotify album tracks failed', errorBody);
