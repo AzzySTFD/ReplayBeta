@@ -13,7 +13,9 @@ export default function TrackList({ tracks, onRateTrack, readOnly = false }) {
             {track.position || i + 1}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-white/90 text-sm font-medium truncate">{track.title}</p>
+            <p className="text-white/90 text-sm font-medium truncate">
+              {String(track?.title || track?.name || track?.track_name || `Track ${track?.position || i + 1}`)}
+            </p>
           </div>
           <div className="flex-shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-1.5 py-1.5 shadow-sm shadow-black/20">
             <RatingScale

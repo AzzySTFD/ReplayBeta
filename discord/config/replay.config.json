@@ -1,0 +1,41 @@
+{
+  "roles": [
+    "Admin",
+    "Moderator",
+    "Reviewer",
+    "Member"
+  ],
+  "categories": [
+    {
+      "name": "WELCOME",
+      "channels": [
+        "rules",
+        "announcements",
+        "introductions"
+      ]
+    },
+    {
+      "name": "MUSIC",
+      "channels": [
+        "currently-spinning",
+        "album-reviews",
+        "track-ratings"
+      ]
+    },
+    {
+      "name": "COMMUNITY",
+      "channels": [
+        "general",
+        "off-topic",
+        "memes"
+      ]
+    },
+    {
+      "name": "SUPPORT",
+      "channels": [
+        "help",
+        "suggestions"
+      ]
+    }
+  ]
+}

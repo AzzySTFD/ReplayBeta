@@ -6,7 +6,18 @@ const DEFAULT_THEME = {
   mode: "solid",
   accent: "#8a8378",
   accent2: "#6b7280",
-  textColor: "#ffffff",
+  surfaceColor: "#2a2a2a",
+};
+
+const normalizeTheme = (value) => {
+  const raw = value || {};
+  const migratedSurfaceColor = raw.surfaceColor || raw.textColor || DEFAULT_THEME.surfaceColor;
+  return {
+    mode: raw.mode || DEFAULT_THEME.mode,
+    accent: raw.accent || DEFAULT_THEME.accent,
+    accent2: raw.accent2 || DEFAULT_THEME.accent2,
+    surfaceColor: migratedSurfaceColor,
+  };
 };
 
 export default function ThemeCustomizer() {
@@ -15,21 +26,29 @@ export default function ThemeCustomizer() {
   useEffect(() => {
     const savedTheme = db.theme.get();
     if (savedTheme) {
-      setTheme({ ...DEFAULT_THEME, ...savedTheme });
+      const normalizedSavedTheme = normalizeTheme(savedTheme);
+      setTheme(normalizedSavedTheme);
+      if (savedTheme.textColor && !savedTheme.surfaceColor) {
+        db.theme.set(normalizedSavedTheme);
+      }
     }
 
     const applyTheme = (value) => {
-      const nextTheme = { ...DEFAULT_THEME, ...(value || {}) };
+      const nextTheme = normalizeTheme(value);
       setTheme(nextTheme);
       document.documentElement.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
       document.documentElement.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
-      document.documentElement.style.setProperty('--theme-text-color', nextTheme.textColor);
+      document.documentElement.style.setProperty('--theme-surface-rgb', hexToRgbChannels(nextTheme.surfaceColor));
+      document.documentElement.style.setProperty('--theme-surface-foreground', getReadableTextColor(nextTheme.surfaceColor));
+      document.documentElement.style.setProperty('--theme-accent-foreground', getReadableTextColor(nextTheme.accent));
       document.documentElement.style.setProperty('--theme-style', nextTheme.mode);
       document.body.classList.toggle('app-theme-gradient', nextTheme.mode === 'gradient');
       document.body.classList.toggle('app-theme-solid', nextTheme.mode === 'solid');
       document.body.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
       document.body.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
-      document.body.style.setProperty('--theme-text-color', nextTheme.textColor);
+      document.body.style.setProperty('--theme-surface-rgb', hexToRgbChannels(nextTheme.surfaceColor));
+      document.body.style.setProperty('--theme-surface-foreground', getReadableTextColor(nextTheme.surfaceColor));
+      document.body.style.setProperty('--theme-accent-foreground', getReadableTextColor(nextTheme.accent));
     };
 
     const handleThemeEvent = (event) => applyTheme(event.detail);
@@ -39,20 +58,24 @@ export default function ThemeCustomizer() {
   }, []);
 
   const applyTheme = (value) => {
-    const nextTheme = { ...DEFAULT_THEME, ...(value || {}) };
+    const nextTheme = normalizeTheme(value);
     document.documentElement.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
     document.documentElement.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
-    document.documentElement.style.setProperty('--theme-text-color', nextTheme.textColor);
+    document.documentElement.style.setProperty('--theme-surface-rgb', hexToRgbChannels(nextTheme.surfaceColor));
+    document.documentElement.style.setProperty('--theme-surface-foreground', getReadableTextColor(nextTheme.surfaceColor));
+    document.documentElement.style.setProperty('--theme-accent-foreground', getReadableTextColor(nextTheme.accent));
     document.documentElement.style.setProperty('--theme-style', nextTheme.mode);
     document.body.classList.toggle('app-theme-gradient', nextTheme.mode === 'gradient');
     document.body.classList.toggle('app-theme-solid', nextTheme.mode === 'solid');
     document.body.style.setProperty('--theme-accent', hexToHsl(nextTheme.accent));
     document.body.style.setProperty('--theme-accent-2', hexToHsl(nextTheme.accent2));
-    document.body.style.setProperty('--theme-text-color', nextTheme.textColor);
+    document.body.style.setProperty('--theme-surface-rgb', hexToRgbChannels(nextTheme.surfaceColor));
+    document.body.style.setProperty('--theme-surface-foreground', getReadableTextColor(nextTheme.surfaceColor));
+    document.body.style.setProperty('--theme-accent-foreground', getReadableTextColor(nextTheme.accent));
   };
 
   const updateTheme = (updates) => {
-    const nextTheme = { ...theme, ...updates };
+    const nextTheme = normalizeTheme({ ...theme, ...updates });
     setTheme(nextTheme);
     db.theme.set(nextTheme);
     applyTheme(nextTheme);
@@ -113,15 +136,15 @@ export default function ThemeCustomizer() {
           </label>
 
           <label className="space-y-2">
-            <span className="text-xs uppercase tracking-wider text-white/40">Text color</span>
+            <span className="text-xs uppercase tracking-wider text-white/40">Box color</span>
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
               <input
                 type="color"
-                value={theme.textColor}
-                onChange={(event) => updateTheme({ textColor: event.target.value })}
+                value={theme.surfaceColor}
+                onChange={(event) => updateTheme({ surfaceColor: event.target.value })}
                 className="h-9 w-12 cursor-pointer rounded border-0 bg-transparent p-0"
               />
-              <span className="text-sm text-white/70">{theme.textColor}</span>
+              <span className="text-sm text-white/70">{theme.surfaceColor}</span>
             </div>
           </label>
         </div>
@@ -159,4 +182,27 @@ function hexToHsl(hex) {
   }
 
   return `${Math.round(h)} 100% ${Math.round(l * 100)}%`;
+}
+
+function hexToRgbChannels(hex) {
+  const cleaned = String(hex || "#000000").replace('#', '');
+  const value = cleaned.length === 3 ? cleaned.split('').map((char) => char + char).join('') : cleaned;
+  const num = parseInt(value, 16);
+  if (!Number.isFinite(num)) return "42 42 42";
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return `${r} ${g} ${b}`;
+}
+
+function getReadableTextColor(hex) {
+  const cleaned = String(hex || "#000000").replace('#', '');
+  const value = cleaned.length === 3 ? cleaned.split('').map((char) => char + char).join('') : cleaned;
+  const num = parseInt(value, 16);
+  if (!Number.isFinite(num)) return "#ffffff";
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? "#111111" : "#ffffff";
 }

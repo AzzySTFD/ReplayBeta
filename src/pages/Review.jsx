@@ -97,7 +97,7 @@ export default function Review() {
             if (cancelled) return;
             const fetchedTracks = (resp.data.tracks || []).map((t) => ({
               position: t.position,
-              title: t.title,
+              title: t.title || t.name || t.track_name || "",
               rating: 0,
             }));
             setTracks(fetchedTracks);
@@ -434,7 +434,7 @@ export default function Review() {
           {!readOnly && (
             <>
               <div className="sm:w-px sm:h-16 h-px w-full bg-white/10" />
-              <div className="flex-1">
+              <div className="flex-1 max-w-full overflow-hidden">
                 <button
                   onClick={() => setUseManualRating(!useManualRating)}
                   className="flex items-center gap-2 text-sm font-medium mb-2 hover:text-stone-300 transition-colors"

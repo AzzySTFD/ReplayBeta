@@ -8,7 +8,9 @@
     --foreground: 0 0% 92%;
     --theme-accent: 0 0% 32%;
     --theme-accent-2: 0 0% 38%;
-    --theme-text-color: #ffffff;
+    --theme-surface-rgb: 42 42 42;
+    --theme-surface-foreground: #ffffff;
+    --theme-accent-foreground: #ffffff;
     --theme-style: solid;
     --card: 0 0% 14%;
     --card-foreground: 0 0% 92%;
@@ -114,19 +116,51 @@
   .app-theme-gradient .bg-gradient-to-r,
   .app-theme-gradient .bg-gradient-to-br {
     background-image: linear-gradient(135deg, hsl(var(--theme-accent)) 0%, hsl(var(--theme-accent-2)) 100%) !important;
-    color: var(--theme-text-color) !important;
+    color: var(--theme-accent-foreground) !important;
   }
 
   .app-theme-solid .bg-gradient-to-r,
   .app-theme-solid .bg-gradient-to-br {
     background-image: none !important;
     background-color: hsl(var(--theme-accent)) !important;
-    color: var(--theme-text-color) !important;
+    color: var(--theme-accent-foreground) !important;
   }
 
-  .app-theme-gradient .text-stone-400,
-  .app-theme-gradient .text-stone-300,
-  .app-theme-gradient .text-stone-500,
+  .app-theme-gradient .bg-white\/\[0\.02\],
+  .app-theme-gradient .bg-white\/\[0\.03\],
+  .app-theme-gradient .bg-white\/\[0\.04\],
+  .app-theme-gradient .bg-white\/\[0\.05\],
+  .app-theme-gradient .bg-white\/\[0\.08\],
+  .app-theme-solid .bg-white\/\[0\.02\],
+  .app-theme-solid .bg-white\/\[0\.03\],
+  .app-theme-solid .bg-white\/\[0\.04\],
+  .app-theme-solid .bg-white\/\[0\.05\],
+  .app-theme-solid .bg-white\/\[0\.08\] {
+    background-color: rgb(var(--theme-surface-rgb) / 0.22) !important;
+  }
+
+  .app-theme-gradient .border-white\/5,
+  .app-theme-gradient .border-white\/10,
+  .app-theme-gradient .border-white\/15,
+  .app-theme-solid .border-white\/5,
+  .app-theme-solid .border-white\/10,
+  .app-theme-solid .border-white\/15 {
+    border-color: rgb(var(--theme-surface-rgb) / 0.5) !important;
+  }
+
+  .app-theme-gradient .bg-white\/\[0\.02\] [class*="text-white"],
+  .app-theme-gradient .bg-white\/\[0\.03\] [class*="text-white"],
+  .app-theme-gradient .bg-white\/\[0\.04\] [class*="text-white"],
+  .app-theme-gradient .bg-white\/\[0\.05\] [class*="text-white"],
+  .app-theme-gradient .bg-white\/\[0\.08\] [class*="text-white"],
+  .app-theme-solid .bg-white\/\[0\.02\] [class*="text-white"],
+  .app-theme-solid .bg-white\/\[0\.03\] [class*="text-white"],
+  .app-theme-solid .bg-white\/\[0\.04\] [class*="text-white"],
+  .app-theme-solid .bg-white\/\[0\.05\] [class*="text-white"],
+  .app-theme-solid .bg-white\/\[0\.08\] [class*="text-white"] {
+    color: var(--theme-surface-foreground) !important;
+  }
+
   .app-theme-gradient .border-stone-500,
   .app-theme-gradient .border-stone-400,
   .app-theme-gradient .border-stone-300,
@@ -136,16 +170,12 @@
   .app-theme-gradient .to-slate-600,
   .app-theme-gradient .to-slate-500,
   .app-theme-gradient .to-slate-300 {
-    color: hsl(var(--theme-accent)) !important;
     border-color: hsl(var(--theme-accent)) !important;
     --tw-gradient-from: hsl(var(--theme-accent)) !important;
     --tw-gradient-to: hsl(var(--theme-accent-2)) !important;
     --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
   }
 
-  .app-theme-solid .text-stone-400,
-  .app-theme-solid .text-stone-300,
-  .app-theme-solid .text-stone-500,
   .app-theme-solid .border-stone-500,
   .app-theme-solid .border-stone-400,
   .app-theme-solid .border-stone-300,
@@ -155,7 +185,6 @@
   .app-theme-solid .to-slate-600,
   .app-theme-solid .to-slate-500,
   .app-theme-solid .to-slate-300 {
-    color: hsl(var(--theme-accent)) !important;
     border-color: hsl(var(--theme-accent)) !important;
     --tw-gradient-from: hsl(var(--theme-accent)) !important;
     --tw-gradient-to: hsl(var(--theme-accent)) !important;
