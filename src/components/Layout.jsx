@@ -8,19 +8,25 @@ import { db } from "@/api/base44Client";
 import { computeUnreadCount, fetchNotificationItems } from "@/lib/notifications";
 
 const BRAND_NAME = "SpinRate";
-const BRAND_ICON_SRC = "/spinrate-icon.png";
+const BRAND_ICON_CANDIDATES = ["/spinrate-icon.png", "/icon-192.png", "/icon-512.png"];
 
 function BrandMark({ sizeClass, iconSizeClass }) {
-  const [failed, setFailed] = useState(false);
+  const [iconIndex, setIconIndex] = useState(0);
+  const iconSrc = BRAND_ICON_CANDIDATES[iconIndex];
+  const exhausted = iconIndex >= BRAND_ICON_CANDIDATES.length;
+
+  const handleImageError = () => {
+    setIconIndex((prev) => prev + 1);
+  };
 
   return (
     <div className={`${sizeClass} rounded-lg bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center overflow-hidden`}>
-      {!failed ? (
+      {!exhausted ? (
         <img
-          src={BRAND_ICON_SRC}
+          src={iconSrc}
           alt="SpinRate logo"
           className="h-full w-full object-cover"
-          onError={() => setFailed(true)}
+          onError={handleImageError}
         />
       ) : (
         <Disc className={`${iconSizeClass} text-white`} />
