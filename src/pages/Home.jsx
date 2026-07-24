@@ -142,7 +142,7 @@ export default function Home() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center shadow-lg shadow-stone-500/20">
             <Disc className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-[2rem] sm:text-[2.6rem] font-bold tracking-tight">ReplayReviews</h1>
+          <h1 className="text-[2rem] sm:text-[2.6rem] font-bold tracking-tight">SpinRate</h1>
         </div>
         <p className="text-white/40 text-[15px] sm:text-[16px] max-w-md mx-auto">
           Search any album, rate every track, and build your music review collection.

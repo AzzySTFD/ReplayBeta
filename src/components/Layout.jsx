@@ -7,6 +7,28 @@ import { Disc, Compass, User as UserIcon, LogOut, Home as HomeIcon, Bell } from 
 import { db } from "@/api/base44Client";
 import { computeUnreadCount, fetchNotificationItems } from "@/lib/notifications";
 
+const BRAND_NAME = "SpinRate";
+const BRAND_ICON_SRC = "/spinrate-icon.png";
+
+function BrandMark({ sizeClass, iconSizeClass }) {
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <div className={`${sizeClass} rounded-lg bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center overflow-hidden`}>
+      {!failed ? (
+        <img
+          src={BRAND_ICON_SRC}
+          alt="SpinRate logo"
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Disc className={`${iconSizeClass} text-white`} />
+      )}
+    </div>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -66,13 +88,13 @@ export default function Layout() {
 
   const getPageTitle = () => {
     const path = location.pathname;
-    if (path === "/") return "ReplayReviews";
+    if (path === "/") return BRAND_NAME;
     if (path === "/discover") return "Discover";
     if (path === "/notifications") return "Notifications";
     if (path === "/profile") return "Profile";
     if (path.startsWith("/user/")) return "User";
     if (path.startsWith("/review/")) return "Review";
-    return "ReplayReviews";
+    return BRAND_NAME;
   };
 
   const navItems = [
@@ -88,10 +110,8 @@ export default function Layout() {
       <nav className="hidden sm:flex sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between w-full">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center">
-              <Disc className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-bold text-[15px]">ReplayReviews</span>
+            <BrandMark sizeClass="w-7 h-7" iconSizeClass="w-4 h-4" />
+            <span className="font-bold text-[15px]">{BRAND_NAME}</span>
           </Link>
           <div className="flex items-center gap-1">
             {navItems.map((item) => (
@@ -130,9 +150,7 @@ export default function Layout() {
         <div className="h-16 grid grid-cols-[1fr_auto_1fr] items-center px-4 gap-3">
           <div />
           <div className="flex items-center justify-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center">
-              <Disc className="w-3.5 h-3.5 text-white" />
-            </div>
+            <BrandMark sizeClass="w-6 h-6" iconSizeClass="w-3.5 h-3.5" />
             <h1 className="font-bold text-lg">{getPageTitle()}</h1>
           </div>
           <div className="flex justify-end">
