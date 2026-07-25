@@ -167,26 +167,8 @@ export default function UserProfile() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="w-8 h-8 text-stone-400 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="text-center py-20 text-white/40">
-        <Disc className="w-12 h-12 mx-auto mb-3 opacity-30" />
-        <p>User not found.</p>
-        <button onClick={() => navigate("/discover")} className="mt-4 text-stone-400 text-sm">Back to Discover</button>
-      </div>
-    );
-  }
-
   const isOwn = currentUser?.id === userId;
-  const socialLinks = profile.social_links || {};
+  const socialLinks = profile?.social_links || {};
   const customization = socialLinks.profile_customization || {};
   const desktopBanner = String(customization.banner_desktop || "").trim();
   const mobileBanner = String(customization.banner_mobile || "").trim();
@@ -281,6 +263,24 @@ export default function UserProfile() {
         return key.charAt(0).toUpperCase() + key.slice(1);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="w-8 h-8 text-stone-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="text-center py-20 text-white/40">
+        <Disc className="w-12 h-12 mx-auto mb-3 opacity-30" />
+        <p>User not found.</p>
+        <button onClick={() => navigate("/discover")} className="mt-4 text-stone-400 text-sm">Back to Discover</button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
