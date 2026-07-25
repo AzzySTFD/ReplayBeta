@@ -30,6 +30,7 @@ export default function Review() {
   const [reviewId, setReviewId] = useState(isNew ? null : id);
   const [readOnly, setReadOnly] = useState(false);
   const [myUsername, setMyUsername] = useState("");
+  const [myDisplayName, setMyDisplayName] = useState("");
   const [reviewerName, setReviewerName] = useState("");
   const [reactions, setReactions] = useState([]);
   const [comments, setComments] = useState([]);
@@ -38,9 +39,12 @@ export default function Review() {
   const [editingCommentText, setEditingCommentText] = useState("");
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
-  const [commentAvatarByUserId, setCommentAvatarByUserId] = useState({});
+  const [commentProfileByUserId, setCommentProfileByUserId] = useState({});
 
   const getCurrentDisplayName = useCallback(() => {
+    const fromDisplayName = String(myDisplayName || "").trim();
+    if (fromDisplayName) return fromDisplayName;
+
     const fromProfile = String(myUsername || "").trim();
     if (fromProfile) return fromProfile;
 
@@ -54,7 +58,7 @@ export default function Review() {
     if (emailName) return emailName.split("@")[0];
 
     return "You";
-  }, [myUsername, user]);
+  }, [myDisplayName, myUsername, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +72,7 @@ export default function Review() {
             if (profiles.length > 0) {
               profileUsername = profiles[0].username || "";
               setMyUsername(profileUsername);
+              setMyDisplayName(profiles[0].display_name || profiles[0].username || "");
             }
           } catch (e) {
             console.error(e);
@@ -158,15 +163,22 @@ export default function Review() {
         userIds.map(async (commentUserId) => {
           try {
             const rows = await db.entities.Profile.filter({ created_by_id: commentUserId });
-            return [commentUserId, rows[0]?.avatar_url || ""];
+            return [
+              commentUserId,
+              {
+                avatar_url: rows[0]?.avatar_url || "",
+                username: rows[0]?.username || "",
+                display_name: rows[0]?.display_name || "",
+              },
+            ];
           } catch {
-            return [commentUserId, ""];
+            return [commentUserId, { avatar_url: "", username: "", display_name: "" }];
           }
         })
       );
 
       if (!cancelled) {
-        setCommentAvatarByUserId(Object.fromEntries(avatarEntries));
+        setCommentProfileByUserId(Object.fromEntries(avatarEntries));
       }
     };
 
@@ -581,9 +593,9 @@ export default function Review() {
               <div className="flex items-center justify-between mb-1 gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
-                    {commentAvatarByUserId[comment.userId] ? (
+                    {commentProfileByUserId[comment.userId]?.avatar_url ? (
                       <img
-                        src={commentAvatarByUserId[comment.userId]}
+                        src={commentProfileByUserId[comment.userId]?.avatar_url}
                         alt={comment.userName || "Comment avatar"}
                         className="h-full w-full object-cover"
                       />
@@ -593,19 +605,23 @@ export default function Review() {
                       </div>
                     )}
                   </div>
-                  {comment.userId ? (
-                    <button
-                      onClick={() => handleGoToUserProfile(comment.userId)}
-                      className="truncate text-sm font-medium text-stone-300 hover:text-stone-200 hover:underline"
-                    >
-                      {comment.userName}
-                    </button>
-                  ) : (
-                    <p className="truncate text-sm font-medium text-white/80">{comment.userName}</p>
-                  )}
+                  <div className="min-w-0">
+                    {comment.userId ? (
+                      <button
+                        onClick={() => handleGoToUserProfile(comment.userId)}
+                        className="truncate text-sm font-medium text-stone-300 hover:text-stone-200 hover:underline"
+                      >
+                        {commentProfileByUserId[comment.userId]?.display_name || comment.userName || "User"}
+                      </button>
+                    ) : (
+                      <p className="truncate text-sm font-medium text-white/80">{comment.userName || "User"}</p>
+                    )}
+                    <p className="truncate text-xs italic text-white/45">
+                      @{commentProfileByUserId[comment.userId]?.username || "user"} • {new Date(comment.created_at).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <p className="text-xs text-white/30">{new Date(comment.created_at).toLocaleString()}</p>
                   {comment.userId === user?.id && (
                     <>
                       <button

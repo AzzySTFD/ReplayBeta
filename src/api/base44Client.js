@@ -848,7 +848,7 @@ const findAvailableUsername = async (requestedUsername, currentUserId) => {
   return `${base}-${Date.now().toString().slice(-4)}`;
 };
 
-const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmail = '') => {
+const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmail = '', preferredDisplayName = '') => {
   if (!userId) return null;
 
   const { data: existingProfile, error: existingError } = await supabase
@@ -867,11 +867,12 @@ const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmai
 
   const emailLocalPart = String(fallbackEmail || '').split('@')[0] || '';
   const resolvedUsername = await findAvailableUsername(preferredUsername || emailLocalPart, userId);
+  const resolvedDisplayName = normalizeUsername(preferredDisplayName) || resolvedUsername;
 
   const profileRow = {
     user_id: userId,
     username: resolvedUsername,
-    display_name: resolvedUsername,
+    display_name: resolvedDisplayName,
     bio: '',
     avatar_url: '',
     social_links: {},
@@ -895,6 +896,7 @@ const mapSupabaseUserToStoredUser = (supabaseUser) => {
     id: supabaseUser.id,
     email: supabaseUser.email || '',
     username: supabaseUser.user_metadata?.username || supabaseUser.user_metadata?.user_name || '',
+    display_name: supabaseUser.user_metadata?.display_name || supabaseUser.user_metadata?.full_name || '',
     full_name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.display_name || '',
     created_at: supabaseUser.created_at || new Date().toISOString(),
   };
@@ -921,7 +923,7 @@ const syncSupabaseUserToLocalSession = async () => {
       window.localStorage.setItem('track-by-track-session', user.id);
     }
 
-    await ensureProfileForUser(user.id, user.username, user.email);
+    await ensureProfileForUser(user.id, user.username, user.email, user.display_name || user.full_name || user.username);
 
     return user;
   } catch {
@@ -1032,6 +1034,7 @@ const createAuthHandlers = () => ({
   register: async (payload) => {
     const normalizedEmail = String(payload.email || '').toLowerCase();
     const normalizedUsername = normalizeUsername(payload.username);
+    const normalizedDisplayName = normalizeUsername(payload.display_name);
 
     if (!normalizedEmail || !payload.password) {
       throw new Error('Email and password are required');
@@ -1041,12 +1044,17 @@ const createAuthHandlers = () => ({
       throw new Error('Username is required');
     }
 
+    if (!normalizedDisplayName) {
+      throw new Error('Display name is required');
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password: payload.password,
       options: {
         data: {
           username: normalizedUsername,
+          display_name: normalizedDisplayName,
         },
       },
     });
@@ -1060,6 +1068,7 @@ const createAuthHandlers = () => ({
       id: data.user.id,
       email: data.user.email || normalizedEmail,
       username: normalizedUsername,
+      display_name: normalizedDisplayName,
       created_at: data.user.created_at || new Date().toISOString(),
     };
 
@@ -1073,7 +1082,7 @@ const createAuthHandlers = () => ({
       window.localStorage.setItem('track-by-track-session', user.id);
     }
 
-    await ensureProfileForUser(user.id, normalizedUsername, user.email);
+    await ensureProfileForUser(user.id, normalizedUsername, user.email, normalizedDisplayName);
 
     await migrateLegacyStoreToSupabase(user.id);
 

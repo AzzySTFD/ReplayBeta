@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Save, AtSign, Trash2, Upload, FolderPlus } from "lucide-react";
+import { Loader2, Save, AtSign, Trash2, Upload, FolderPlus, User, ArrowUp, ArrowDown, Monitor, Smartphone } from "lucide-react";
 import DiscordConnect from "@/components/DiscordConnect";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
 
@@ -27,6 +27,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [profile, setProfile] = useState(null);
+  const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -37,6 +38,9 @@ export default function ProfilePage() {
   const [youtube, setYoutube] = useState("");
   const [kick, setKick] = useState("");
   const [website, setWebsite] = useState("");
+  const [desktopBannerUrl, setDesktopBannerUrl] = useState("");
+  const [mobileBannerUrl, setMobileBannerUrl] = useState("");
+  const [sectionOrder, setSectionOrder] = useState(["socials", "folders", "reviews"]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -54,6 +58,7 @@ export default function ProfilePage() {
         const profiles = await db.entities.Profile.filter({ created_by_id: user.id });
         if (profiles.length > 0) {
           setProfile(profiles[0]);
+          setDisplayName(profiles[0].display_name || profiles[0].username || "");
           setUsername(profiles[0].username || "");
           setBio(profiles[0].bio || "");
           setAvatarUrl(profiles[0].avatar_url || "");
@@ -64,6 +69,15 @@ export default function ProfilePage() {
           setYoutube(profiles[0].social_links?.youtube || "");
           setKick(profiles[0].social_links?.kick || "");
           setWebsite(profiles[0].social_links?.website || "");
+          const customization = profiles[0].social_links?.profile_customization || {};
+          setDesktopBannerUrl(customization.banner_desktop || "");
+          setMobileBannerUrl(customization.banner_mobile || "");
+          const incomingOrder = Array.isArray(customization.section_order) ? customization.section_order : [];
+          const validOrder = incomingOrder.filter((entry) => ["socials", "folders", "reviews"].includes(entry));
+          if (validOrder.length) {
+            const remainder = ["socials", "folders", "reviews"].filter((entry) => !validOrder.includes(entry));
+            setSectionOrder([...validOrder, ...remainder]);
+          }
           setDiscordChannelId(profiles[0].discord_channel_id || "");
           setDiscordChannelName(profiles[0].discord_channel_name || "");
         }
@@ -108,6 +122,41 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
+  const handleBannerUpload = (event, target) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const nextValue = reader.result || "";
+      if (target === "desktop") {
+        setDesktopBannerUrl(nextValue);
+      } else {
+        setMobileBannerUrl(nextValue);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const moveSection = (index, direction) => {
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    if (nextIndex < 0 || nextIndex >= sectionOrder.length) return;
+
+    setSectionOrder((prev) => {
+      const copy = [...prev];
+      const current = copy[index];
+      copy[index] = copy[nextIndex];
+      copy[nextIndex] = current;
+      return copy;
+    });
+  };
+
+  const getSectionLabel = (section) => {
+    if (section === "socials") return "Social links";
+    if (section === "folders") return "Folders";
+    return "Reviews";
+  };
+
   const handleCreateFolder = async () => {
     const trimmed = newFolderName.trim();
     if (!trimmed) {
@@ -141,6 +190,10 @@ export default function ProfilePage() {
       toast({ variant: "destructive", title: "Username required" });
       return;
     }
+    if (!displayName.trim()) {
+      toast({ variant: "destructive", title: "Display name required" });
+      return;
+    }
     setSaving(true);
     try {
       const existing = await db.entities.Profile.filter({ username: username.trim() });
@@ -158,10 +211,16 @@ export default function ProfilePage() {
         youtube: youtube.trim(),
         kick: kick.trim(),
         website: website.trim(),
+        profile_customization: {
+          banner_desktop: desktopBannerUrl.trim(),
+          banner_mobile: mobileBannerUrl.trim(),
+          section_order: sectionOrder,
+        },
       };
 
       if (profile) {
         await db.entities.Profile.update(profile.id, {
+          display_name: displayName.trim(),
           username: username.trim(),
           bio,
           avatar_url: avatarUrl.trim(),
@@ -169,6 +228,7 @@ export default function ProfilePage() {
         });
       } else {
         const created = await db.entities.Profile.create({
+          display_name: displayName.trim(),
           username: username.trim(),
           bio,
           avatar_url: avatarUrl.trim(),
@@ -363,11 +423,25 @@ export default function ProfilePage() {
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
       <h1 className="text-2xl font-bold mb-1">Your Profile</h1>
-      <p className="text-white/40 text-sm mb-8">Set your username so others can find and follow you.</p>
+      <p className="text-white/40 text-sm mb-8">Set your display name and unique @username so others can find and follow you.</p>
 
       <div className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="username" className="text-white/80">Username</Label>
+          <Label htmlFor="displayName" className="text-white/80">Display Name</Label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Input
+              id="displayName"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Azzy"
+              className="pl-9 bg-white/[0.03] border-white/10 text-white placeholder:text-white/25"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="username" className="text-white/80">@ Username</Label>
           <div className="relative">
             <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
             <Input
@@ -404,6 +478,89 @@ export default function ProfilePage() {
               <p className="text-sm text-white/60">This image will be shown on your public profile.</p>
             </div>
           )}
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white/80">Profile banners</h3>
+            <p className="text-sm text-white/50">Use different banner images for desktop and mobile profile views.</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="desktopBanner" className="text-white/80 inline-flex items-center gap-2"><Monitor className="h-4 w-4" />Desktop banner</Label>
+              <Input
+                id="desktopBanner"
+                value={desktopBannerUrl}
+                onChange={(e) => setDesktopBannerUrl(e.target.value)}
+                placeholder="https://example.com/desktop-banner.jpg"
+                className="bg-white/[0.03] border-white/10 text-white placeholder:text-white/25"
+              />
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:border-stone-500/40 hover:text-white">
+                <Upload className="h-3.5 w-3.5" />
+                <span>Upload desktop banner</span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleBannerUpload(e, "desktop")} />
+              </label>
+              {desktopBannerUrl && (
+                <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+                  <img src={desktopBannerUrl} alt="Desktop banner preview" className="h-24 w-full object-cover" />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="mobileBanner" className="text-white/80 inline-flex items-center gap-2"><Smartphone className="h-4 w-4" />Mobile banner</Label>
+              <Input
+                id="mobileBanner"
+                value={mobileBannerUrl}
+                onChange={(e) => setMobileBannerUrl(e.target.value)}
+                placeholder="https://example.com/mobile-banner.jpg"
+                className="bg-white/[0.03] border-white/10 text-white placeholder:text-white/25"
+              />
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:border-stone-500/40 hover:text-white">
+                <Upload className="h-3.5 w-3.5" />
+                <span>Upload mobile banner</span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleBannerUpload(e, "mobile")} />
+              </label>
+              {mobileBannerUrl && (
+                <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+                  <img src={mobileBannerUrl} alt="Mobile banner preview" className="h-24 w-full object-cover" />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <h3 className="text-sm font-semibold text-white/80">Profile layout order</h3>
+          <p className="text-sm text-white/50 mb-3">Arrange how sections appear on your public profile.</p>
+          <div className="space-y-2">
+            {sectionOrder.map((section, index) => (
+              <div key={section} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
+                <span className="text-sm text-white/85">{getSectionLabel(section)}</span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={index === 0}
+                    onClick={() => moveSection(index, "up")}
+                    className="h-8 w-8 text-white/70 hover:bg-white/[0.08]"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={index === sectionOrder.length - 1}
+                    onClick={() => moveSection(index, "down")}
+                    className="h-8 w-8 text-white/70 hover:bg-white/[0.08]"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

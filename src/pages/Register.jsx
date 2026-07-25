@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2, AtSign, MessageCircle } from "lucide-react";
+import { UserPlus, Mail, Lock, Loader2, AtSign, MessageCircle, User } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
 import { toast } from "@/components/ui/use-toast";
@@ -16,6 +16,7 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,8 +24,8 @@ export default function Register() {
     e.preventDefault();
     setError("");
 
-    if (!email.trim() || !password || !username.trim()) {
-      setError("Please enter an email, password, and username");
+    if (!email.trim() || !password || !username.trim() || !displayName.trim()) {
+      setError("Please enter an email, password, username, and display name");
       return;
     }
 
@@ -40,7 +41,12 @@ export default function Register() {
 
     setLoading(true);
     try {
-      await db.auth.register({ email: email.trim(), password, username: username.trim() });
+      await db.auth.register({
+        email: email.trim(),
+        password,
+        username: username.trim(),
+        display_name: displayName.trim(),
+      });
       toast({ title: "Account created", description: "You are now signed in." });
       navigate('/');
     } catch (err) {
@@ -95,6 +101,21 @@ export default function Register() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="displayName">Display Name</Label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
+            <Input
+              id="displayName"
+              autoComplete="name"
+              placeholder="Azzy"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="pl-10 h-12"
+              required
+            />
+          </div>
+        </div>
         <div className="space-y-2">
           <Label htmlFor="username">Username</Label>
           <div className="relative">

@@ -10,6 +10,8 @@ import PullToRefresh from "@/components/PullToRefresh";
 import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen } from "lucide-react";
 
 const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
+const SOCIAL_KEYS = ["instagram", "twitter", "tiktok", "twitch", "youtube", "kick", "website"];
+const DEFAULT_SECTION_ORDER = ["socials", "folders", "reviews"];
 
 const ensureHttp = (value = "") => {
   const trimmed = value.trim();
@@ -184,12 +186,22 @@ export default function UserProfile() {
 
   const isOwn = currentUser?.id === userId;
   const socialLinks = profile.social_links || {};
+  const customization = socialLinks.profile_customization || {};
+  const desktopBanner = String(customization.banner_desktop || "").trim();
+  const mobileBanner = String(customization.banner_mobile || "").trim();
+  const sectionOrderFromProfile = Array.isArray(customization.section_order) ? customization.section_order : [];
+  const validSectionOrder = sectionOrderFromProfile.filter((section) => DEFAULT_SECTION_ORDER.includes(section));
+  const sectionOrder = validSectionOrder.length
+    ? [...validSectionOrder, ...DEFAULT_SECTION_ORDER.filter((section) => !validSectionOrder.includes(section))]
+    : DEFAULT_SECTION_ORDER;
   const visibleReviews = selectedFolderId
     ? reviews.filter((review) => review.folder_id === selectedFolderId)
     : reviews.filter((review) => review.folder_id || review.folder_name);
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) || null;
 
-  const socialEntries = Object.entries(socialLinks).filter(([, value]) => value);
+  const socialEntries = SOCIAL_KEYS
+    .map((key) => [key, socialLinks[key]])
+    .filter(([, value]) => value);
 
   const getSocialStyle = (key) => {
     switch (key) {
@@ -254,6 +266,25 @@ export default function UserProfile() {
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
+      {(desktopBanner || mobileBanner) && (
+        <div className="mb-6 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+          <div className="sm:hidden">
+            <img
+              src={mobileBanner || desktopBanner}
+              alt={`${profile.username} mobile banner`}
+              className="h-32 w-full object-cover"
+            />
+          </div>
+          <div className="hidden sm:block">
+            <img
+              src={desktopBanner || mobileBanner}
+              alt={`${profile.username} banner`}
+              className="h-44 w-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start gap-4 mb-8">
         <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-2xl sm:text-3xl font-bold flex-shrink-0 overflow-hidden">
           {profile.avatar_url ? (
@@ -263,31 +294,11 @@ export default function UserProfile() {
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold">{profile.username}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">{profile.display_name || profile.username}</h1>
+          <p className="mt-0.5 text-sm italic text-white/50">@{profile.username}</p>
           {profile.bio && <p className="text-white/50 text-sm mt-1">{profile.bio}</p>}
           {!isOwn && (
             <p className="text-xs uppercase tracking-[0.2em] text-stone-400/70 mt-2">Public profile</p>
-          )}
-          {socialEntries.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {socialEntries.map(([key, value]) => {
-                const href = buildSocialHref(key, String(value || ""));
-                if (!href) return null;
-                return (
-                  <a
-                    key={key}
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm transition-all ${getSocialStyle(key)}`}
-                    title={formatSocialLabel(key)}
-                  >
-                    {getSocialIcon(key)}
-                    <span>{formatSocialLabel(key)}</span>
-                  </a>
-                );
-              })}
-            </div>
           )}
 
           <div className="mt-4 flex flex-wrap gap-2 text-sm">
@@ -367,73 +378,112 @@ export default function UserProfile() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <FolderOpen className="w-4 h-4 text-stone-400" />
-          <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Folders</h2>
-        </div>
-        {folders.length === 0 ? (
-          <p className="text-sm text-white/40">This profile doesn’t have any folders yet.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedFolderId("")}
-              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedFolderId === "" ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
-            >
-              All reviews
-            </button>
-            {folders.map((folder) => (
-              <button
-                key={folder.id}
-                onClick={() => setSelectedFolderId(folder.id)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedFolderId === folder.id ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
-              >
-                {folder.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {sectionOrder.map((section) => {
+        if (section === "socials") {
+          if (socialEntries.length === 0) return null;
+          return (
+            <div key="socials" className="mb-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <ExternalLink className="w-4 h-4 text-stone-400" />
+                <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Social links</h2>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {socialEntries.map(([key, value]) => {
+                  const href = buildSocialHref(key, String(value || ""));
+                  if (!href) return null;
+                  return (
+                    <a
+                      key={key}
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm transition-all ${getSocialStyle(key)}`}
+                      title={formatSocialLabel(key)}
+                    >
+                      {getSocialIcon(key)}
+                      <span>{formatSocialLabel(key)}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
 
-      <div className="flex items-center gap-2 mb-4">
-        <Star className="w-4 h-4 text-stone-400" />
-        <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
-          {selectedFolder ? `${selectedFolder.name}` : "All reviews"}
-        </h2>
-      </div>
-      {visibleReviews.length === 0 ? (
-        <div className="text-center py-12 text-white/30 border border-white/5 rounded-2xl">
-          <Disc className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No reviews in this folder yet.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {visibleReviews.map((review) => (
-            <button
-              key={review.id}
-              onClick={() => navigate(`/review/${review.id}`)}
-              className="group flex items-center gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all text-left"
-            >
-              <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
-                {review.album_art_url && (
-                  <Image src={review.album_art_url} alt={review.album_title} fittingType="fill" className="w-full h-full" />
-                )}
+        if (section === "folders") {
+          return (
+            <div key="folders" className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <FolderOpen className="w-4 h-4 text-stone-400" />
+                <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Folders</h2>
               </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-sm truncate">{review.album_title}</h3>
-                <p className="text-white/40 text-xs truncate">{review.artist}</p>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <span className="text-stone-400 text-sm font-bold font-mono">
-                    {review.album_rating?.toFixed(1) || "—"}
-                  </span>
-                  <span className="text-white/30 text-xs">/ 10</span>
+              {folders.length === 0 ? (
+                <p className="text-sm text-white/40">This profile doesn’t have any folders yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setSelectedFolderId("")}
+                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedFolderId === "" ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
+                  >
+                    All reviews
+                  </button>
+                  {folders.map((folder) => (
+                    <button
+                      key={folder.id}
+                      onClick={() => setSelectedFolderId(folder.id)}
+                      className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedFolderId === folder.id ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
+                    >
+                      {folder.name}
+                    </button>
+                  ))}
                 </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <div key="reviews">
+            <div className="flex items-center gap-2 mb-4">
+              <Star className="w-4 h-4 text-stone-400" />
+              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
+                {selectedFolder ? `${selectedFolder.name}` : "All reviews"}
+              </h2>
+            </div>
+            {visibleReviews.length === 0 ? (
+              <div className="text-center py-12 text-white/30 border border-white/5 rounded-2xl">
+                <Disc className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No reviews in this folder yet.</p>
               </div>
-              <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-white/40 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-            </button>
-          ))}
-        </div>
-      )}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {visibleReviews.map((review) => (
+                  <button
+                    key={review.id}
+                    onClick={() => navigate(`/review/${review.id}`)}
+                    className="group flex items-center gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all text-left"
+                  >
+                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
+                      {review.album_art_url && (
+                        <Image src={review.album_art_url} alt={review.album_title} fittingType="fill" className="w-full h-full" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-white truncate">{review.album_title || "Untitled album"}</p>
+                      <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
+                      <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
+                        <span className="rounded bg-white/10 px-1.5 py-0.5">{Number(review.album_rating || 0).toFixed(1)}</span>
+                        <span>{review.tracks?.length || 0} tracks</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-white/25 group-hover:text-white/50 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

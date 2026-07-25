@@ -91,7 +91,8 @@ export const fetchNotificationItems = async (userId) => {
       const rows = await db.entities.Profile.filter({ created_by_id: profileUserId });
       return {
         id: profileUserId,
-        username: rows[0]?.username || "Someone",
+        username: rows[0]?.username || "",
+        display_name: rows[0]?.display_name || "",
         avatar_url: rows[0]?.avatar_url || "",
       };
     })
@@ -102,7 +103,7 @@ export const fetchNotificationItems = async (userId) => {
 
   for (const follow of incomingFollows) {
     const followerProfile = profileById.get(follow.created_by_id);
-    const followerName = followerProfile?.username || "Someone";
+    const followerName = followerProfile?.display_name || followerProfile?.username || "Someone";
     events.push({
       id: `follow-${follow.id}`,
       type: "follow",
@@ -127,7 +128,7 @@ export const fetchNotificationItems = async (userId) => {
       events.push({
         id: buildInteractionEventId("reaction", review.id, reaction, events.length),
         type: "reaction",
-        title: `${actorProfile?.username || reaction.userName || "Someone"} reacted ${reaction.emoji || ""}`.trim(),
+        title: `${actorProfile?.display_name || actorProfile?.username || reaction.userName || "Someone"} reacted ${reaction.emoji || ""}`.trim(),
         description: `On your review of ${review.album_title || "an album"}.`,
         created_at: reaction.created_at || review.updated_at || review.created_at,
         icon: "reaction",
@@ -143,7 +144,7 @@ export const fetchNotificationItems = async (userId) => {
       events.push({
         id: buildInteractionEventId("comment", review.id, comment, events.length),
         type: "comment",
-        title: `${actorProfile?.username || comment.userName || "Someone"} commented on your review`,
+        title: `${actorProfile?.display_name || actorProfile?.username || comment.userName || "Someone"} commented on your review`,
         description: comment.text || `On your review of ${review.album_title || "an album"}.`,
         created_at: comment.created_at || review.updated_at || review.created_at,
         icon: "comment",

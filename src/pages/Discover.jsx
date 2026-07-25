@@ -96,7 +96,8 @@ export default function Discover() {
           )}
         </div>
         <div className="min-w-0">
-          <p className="font-semibold text-sm truncate">{p.username}</p>
+          <p className="font-semibold text-sm truncate">{p.display_name || p.username}</p>
+          <p className="text-xs italic text-white/45 truncate">@{p.username}</p>
           {p.bio && <p className="text-white/40 text-xs truncate">{p.bio}</p>}
         </div>
       </button>
