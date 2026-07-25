@@ -881,18 +881,20 @@ const createAuthHandlers = () => ({
 
     return { ok: true, user };
   },
-  loginWithProvider: async (_provider, _redirect) => {
+  loginWithProvider: async (_provider) => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    const redirectTo = _redirect
-      ? new URL(_redirect, window.location.origin).toString()
-      : window.location.origin;
+    if (_provider && _provider !== 'discord') {
+      throw new Error('Only Discord OAuth is supported.');
+    }
 
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: _provider,
-      options: { redirectTo },
+      provider: 'discord',
+      options: {
+        redirectTo: window.location.origin,
+      },
     });
 
     if (error) {

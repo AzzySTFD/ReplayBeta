@@ -4,9 +4,8 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
+import { LogIn, Mail, Lock, Loader2, MessageCircle } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import GoogleIcon from "@/components/GoogleIcon";
 import { db } from "@/api/base44Client";
 
 export default function Login() {
@@ -30,8 +29,8 @@ export default function Login() {
     }
   };
 
-  const handleGoogle = () => {
-    db.auth.loginWithProvider("google", "/");
+  const handleDiscord = () => {
+    db.auth.loginWithProvider("discord");
   };
 
   return (
@@ -53,10 +52,10 @@ export default function Login() {
       <Button
         variant="outline"
         className="w-full h-12 text-sm font-medium mb-6"
-        onClick={handleGoogle}
+        onClick={handleDiscord}
       >
-        <GoogleIcon className="w-5 h-5 mr-2" />
-        Continue with Google
+        <MessageCircle className="w-5 h-5 mr-2" />
+        Continue with Discord
       </Button>
 
       <div className="relative mb-6">
