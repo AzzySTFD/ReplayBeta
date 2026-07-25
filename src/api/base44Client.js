@@ -1164,6 +1164,29 @@ const localFunctions = {
       return { data: { albums: body.albums || [] } };
     }
 
+    if (name === 'spotifyRandomAlbum') {
+      const response = await fetch(`${getApiBaseUrl()}/api/spotify/random-album`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error('Spotify random album failed', errorBody);
+        if (response.status === 404) {
+          throw new Error('Could not find a random album right now. Try again.');
+        }
+        if (response.status === 500 || response.status === 503) {
+          throw new Error('Random album lookup is unavailable. Check Spotify server configuration.');
+        }
+        throw new Error('Random album lookup failed. Please try again.');
+      }
+
+      const body = await response.json();
+      return { data: { album: body.album || null } };
+    }
+
     if (name === 'getFeaturedAlbums') {
       return { data: { featured: [] } };
     }

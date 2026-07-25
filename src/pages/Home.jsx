@@ -103,6 +103,28 @@ export default function Home() {
     }
   };
 
+  const handleSurpriseMe = async () => {
+    setSearching(true);
+    setHasSearched(false);
+    setSearchError("");
+    try {
+      const resp = await db.functions.invoke("spotifyRandomAlbum", {});
+      const album = resp?.data?.album || null;
+      if (!album) {
+        throw new Error("Could not find a random album right now. Try again.");
+      }
+
+      navigate("/review/new", { state: { album } });
+    } catch (e) {
+      console.error(e);
+      setSearchError(e?.message || "Random album lookup failed. Please try again.");
+      setHasSearched(true);
+      setResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const handleAlbumClick = (album) => {
     navigate("/review/new", { state: { album } });
   };
@@ -150,7 +172,7 @@ export default function Home() {
       </div>
 
       <div className="max-w-2xl mx-auto mb-12 sm:mb-14">
-        <AlbumSearchBar onSearch={handleSearch} loading={searching} />
+        <AlbumSearchBar onSearch={handleSearch} onSurprise={handleSurpriseMe} loading={searching} />
       </div>
 
       {hasSearched && (

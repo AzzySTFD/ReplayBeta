@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/api/base44Client";
@@ -50,6 +50,7 @@ export default function UserProfile() {
   const [reviews, setReviews] = useState([]);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [selectedYear, setSelectedYear] = useState("all");
   const [followRecord, setFollowRecord] = useState(null);
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
@@ -194,10 +195,35 @@ export default function UserProfile() {
   const sectionOrder = validSectionOrder.length
     ? [...validSectionOrder, ...DEFAULT_SECTION_ORDER.filter((section) => !validSectionOrder.includes(section))]
     : DEFAULT_SECTION_ORDER;
-  const visibleReviews = selectedFolderId
+  const folderScopedReviews = selectedFolderId
     ? reviews.filter((review) => review.folder_id === selectedFolderId)
     : reviews.filter((review) => review.folder_id || review.folder_name);
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    for (const review of folderScopedReviews) {
+      const value = String(review?.release_year || "").trim();
+      const match = value.match(/\b(19|20)\d{2}\b/);
+      if (match) {
+        years.add(match[0]);
+      }
+    }
+    return [...years].sort((a, b) => Number(b) - Number(a));
+  }, [folderScopedReviews]);
+  const visibleReviews = selectedYear === "all"
+    ? folderScopedReviews
+    : folderScopedReviews.filter((review) => String(review?.release_year || "").includes(selectedYear));
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) || null;
+
+  useEffect(() => {
+    if (selectedYear !== "all" && !availableYears.includes(selectedYear)) {
+      setSelectedYear("all");
+    }
+  }, [availableYears, selectedYear]);
+
+  const handleSelectFolder = (folderId) => {
+    setSelectedFolderId(folderId);
+    setSelectedYear("all");
+  };
 
   const socialEntries = SOCIAL_KEYS
     .map((key) => [key, socialLinks[key]])
@@ -294,10 +320,10 @@ export default function UserProfile() {
             profile.username?.[0]?.toUpperCase() || "U"
           )}
         </div>
-        <div className="flex-1 min-w-0">
+        <div className={`flex-1 min-w-0 ${desktopBanner || mobileBanner ? "pt-5 sm:pt-6" : ""}`}>
           <h1 className="text-xl sm:text-2xl font-bold">{profile.display_name || profile.username}</h1>
-          <p className="mt-0.5 text-sm italic text-white/50">@{profile.username}</p>
-          {profile.bio && <p className="text-white/50 text-sm mt-1">{profile.bio}</p>}
+          <p className="mt-1 text-sm italic text-white/50">@{profile.username}</p>
+          {profile.bio && <p className="text-white/50 text-sm mt-2">{profile.bio}</p>}
           {!isOwn && (
             <p className="text-xs uppercase tracking-[0.2em] text-stone-400/70 mt-2">Public profile</p>
           )}
@@ -424,7 +450,7 @@ export default function UserProfile() {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => setSelectedFolderId("")}
+                    onClick={() => handleSelectFolder("")}
                     className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedFolderId === "" ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
                   >
                     All reviews
@@ -432,7 +458,7 @@ export default function UserProfile() {
                   {folders.map((folder) => (
                     <button
                       key={folder.id}
-                      onClick={() => setSelectedFolderId(folder.id)}
+                      onClick={() => handleSelectFolder(folder.id)}
                       className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${selectedFolderId === folder.id ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
                     >
                       {folder.name}
@@ -452,10 +478,29 @@ export default function UserProfile() {
                 {selectedFolder ? `${selectedFolder.name}` : "All reviews"}
               </h2>
             </div>
+            {availableYears.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSelectedYear("all")}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${selectedYear === "all" ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
+                >
+                  All years
+                </button>
+                {availableYears.map((year) => (
+                  <button
+                    key={year}
+                    onClick={() => setSelectedYear(year)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${selectedYear === year ? "border-stone-500/40 bg-stone-500/10 text-white" : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"}`}
+                  >
+                    {year}
+                  </button>
+                ))}
+              </div>
+            )}
             {visibleReviews.length === 0 ? (
               <div className="text-center py-12 text-white/30 border border-white/5 rounded-2xl">
                 <Disc className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No reviews in this folder yet.</p>
+                <p className="text-sm">No reviews for this folder and year yet.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -475,6 +520,7 @@ export default function UserProfile() {
                       <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
                       <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
                         <span className="rounded bg-white/10 px-1.5 py-0.5">{Number(review.album_rating || 0).toFixed(1)}</span>
+                        {review.release_year && <span>{review.release_year}</span>}
                         <span>{review.tracks?.length || 0} tracks</span>
                       </div>
                     </div>

@@ -63,6 +63,42 @@ const spotifyFetch = async (path) => {
   return response.json();
 };
 
+const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
+
+const pickRandomSeed = () => {
+  const first = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+  const second = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+  return `${first}${second}`;
+};
+
+const fetchRandomAlbum = async () => {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const seed = pickRandomSeed();
+    const firstPage = await spotifyFetch(`/search?q=${encodeURIComponent(seed)}&type=album&limit=1&offset=0&market=US`);
+    const total = Number(firstPage?.albums?.total || 0);
+    if (!total) {
+      continue;
+    }
+
+    const maxOffset = Math.min(total - 1, 999);
+    const randomOffset = Math.floor(Math.random() * (maxOffset + 1));
+    const randomPage = await spotifyFetch(`/search?q=${encodeURIComponent(seed)}&type=album&limit=1&offset=${randomOffset}&market=US`);
+    const album = randomPage?.albums?.items?.[0];
+    if (album) {
+      return {
+        id: album.id,
+        title: album.name,
+        artist: (album.artists || []).map((artist) => artist.name).join(', '),
+        artwork_url: (album.images || []).find((image) => image.width >= 300)?.url || album.images?.[0]?.url || '',
+        release_year: (album.release_date || '').slice(0, 4),
+        album_type: album.album_type || 'album',
+      };
+    }
+  }
+
+  return null;
+};
+
 app.post('/api/spotify/search', async (req, res) => {
   try {
     const query = req.body?.query?.trim();
@@ -88,6 +124,20 @@ app.post('/api/spotify/search', async (req, res) => {
   } catch (error) {
     console.error('Spotify search proxy error', error);
     return res.status(500).json({ error: error.message || 'Spotify search failed' });
+  }
+});
+
+app.post('/api/spotify/random-album', async (_req, res) => {
+  try {
+    const album = await fetchRandomAlbum();
+    if (!album) {
+      return res.status(404).json({ error: 'No random album found' });
+    }
+
+    return res.json({ album });
+  } catch (error) {
+    console.error('Spotify random album proxy error', error);
+    return res.status(500).json({ error: error.message || 'Spotify random album failed' });
   }
 });
 

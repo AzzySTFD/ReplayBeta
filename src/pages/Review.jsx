@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import TrackList from "@/components/TrackList";
 import RatingScale from "@/components/RatingScale";
 import { useToast } from "@/components/ui/use-toast";
-import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X, Shuffle } from "lucide-react";
 
 export default function Review() {
   const { id } = useParams();
@@ -22,6 +22,7 @@ export default function Review() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [surprising, setSurprising] = useState(false);
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [useManualRating, setUseManualRating] = useState(false);
@@ -40,6 +41,41 @@ export default function Review() {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [commentProfileByUserId, setCommentProfileByUserId] = useState({});
+
+  const applySelectedAlbum = useCallback(async (selectedAlbum, resetDraft = false) => {
+    if (!selectedAlbum) return;
+
+    setAlbum({
+      title: selectedAlbum.title,
+      artist: selectedAlbum.artist,
+      artwork_url: selectedAlbum.artwork_url,
+      release_year: selectedAlbum.release_year || "",
+    });
+
+    if (resetDraft) {
+      setUseManualRating(false);
+      setManualRating(0);
+      setNotes("");
+      setSelectedFolderId("");
+      setReactions([]);
+      setComments([]);
+    }
+
+    if (selectedAlbum.id) {
+      const resp = await db.functions.invoke("spotifyAlbumTracks", {
+        albumId: selectedAlbum.id,
+      });
+      const fetchedTracks = (resp.data.tracks || []).map((t) => ({
+        position: t.position,
+        title: t.title || t.name || t.track_name || "",
+        rating: 0,
+      }));
+      setTracks(fetchedTracks);
+      return;
+    }
+
+    setTracks([]);
+  }, []);
 
   const getCurrentDisplayName = useCallback(() => {
     const fromDisplayName = String(myDisplayName || "").trim();
@@ -89,25 +125,8 @@ export default function Review() {
         }
 
         if (isNew && passedAlbum) {
-          setAlbum({
-            title: passedAlbum.title,
-            artist: passedAlbum.artist,
-            artwork_url: passedAlbum.artwork_url,
-            release_year: passedAlbum.release_year || "",
-          });
-
-          if (passedAlbum.id) {
-            const resp = await db.functions.invoke("spotifyAlbumTracks", {
-              albumId: passedAlbum.id,
-            });
-            if (cancelled) return;
-            const fetchedTracks = (resp.data.tracks || []).map((t) => ({
-              position: t.position,
-              title: t.title || t.name || t.track_name || "",
-              rating: 0,
-            }));
-            setTracks(fetchedTracks);
-          }
+          await applySelectedAlbum(passedAlbum, true);
+          if (cancelled) return;
         } else if (!isNew) {
           const review = await db.entities.Review.get(id);
           const reviewReactions = await db.entities.Review.filter({ id: review.id });
@@ -147,7 +166,7 @@ export default function Review() {
     return () => {
       cancelled = true;
     };
-  }, [id, isNew, passedAlbum, user]);
+  }, [id, isNew, passedAlbum, user, applySelectedAlbum]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,7 +174,7 @@ export default function Review() {
     const loadCommenterAvatars = async () => {
       const userIds = [...new Set((comments || []).map((comment) => comment?.userId).filter(Boolean))];
       if (userIds.length === 0) {
-        if (!cancelled) setCommentAvatarByUserId({});
+        if (!cancelled) setCommentProfileByUserId({});
         return;
       }
 
@@ -340,6 +359,25 @@ export default function Review() {
     navigate(`/user/${commentUserId}`);
   };
 
+  const handleSurpriseAgain = async () => {
+    if (!isNew || readOnly) return;
+    setSurprising(true);
+    try {
+      const resp = await db.functions.invoke("spotifyRandomAlbum", {});
+      const randomAlbum = resp?.data?.album || null;
+      if (!randomAlbum) {
+        throw new Error("Could not find a random album right now. Try again.");
+      }
+      await applySelectedAlbum(randomAlbum, true);
+      toast({ title: "New random album loaded" });
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Random album failed", description: e.message || "Please try again." });
+    } finally {
+      setSurprising(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -416,6 +454,17 @@ export default function Review() {
         </button>
         {!readOnly && (
           <div className="flex items-center gap-2">
+            {isNew && (
+              <Button
+                variant="outline"
+                onClick={handleSurpriseAgain}
+                disabled={surprising || saving}
+                className="border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
+              >
+                {surprising ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Shuffle className="w-4 h-4 mr-2" />}
+                Try another random album
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleDelete}
