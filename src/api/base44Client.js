@@ -823,18 +823,79 @@ const setStoredTheme = (theme) => {
   }
 };
 
+const mapSupabaseUserToStoredUser = (supabaseUser) => {
+  if (!supabaseUser) return null;
+
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email || '',
+    username: supabaseUser.user_metadata?.username || supabaseUser.user_metadata?.user_name || '',
+    full_name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.display_name || '',
+    created_at: supabaseUser.created_at || new Date().toISOString(),
+  };
+};
+
+const syncSupabaseUserToLocalSession = async () => {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data?.user) {
+      return null;
+    }
+
+    const user = mapSupabaseUserToStoredUser(data.user);
+    if (!user) return null;
+
+    const existingUsers = getStoredUsers();
+    const nextUsers = existingUsers.some((item) => item.id === user.id)
+      ? existingUsers.map((item) => (item.id === user.id ? { ...item, ...user } : item))
+      : [...existingUsers, user];
+
+    setStoredUsers(nextUsers);
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('track-by-track-session', user.id);
+    }
+
+    return user;
+  } catch {
+    return null;
+  }
+};
+
 const createAuthHandlers = () => ({
   isAuthenticated: async () => {
     if (typeof window === 'undefined') return false;
-    return Boolean(window.localStorage.getItem('track-by-track-session'));
+    const localSession = window.localStorage.getItem('track-by-track-session');
+    if (localSession) return true;
+
+    const syncedUser = await syncSupabaseUserToLocalSession();
+    return Boolean(syncedUser);
   },
   me: async () => {
     if (typeof window === 'undefined') return null;
     const session = window.localStorage.getItem('track-by-track-session');
-    if (!session) return null;
+
+    if (!session) {
+      const oauthUser = await syncSupabaseUserToLocalSession();
+      if (oauthUser) {
+        migrateLegacyDevUserData(oauthUser.id);
+        await migrateLegacyStoreToSupabase(oauthUser.id);
+      }
+      return oauthUser;
+    }
 
     const users = getStoredUsers();
     const currentUser = users.find((user) => user.id === session) || null;
+
+    if (!currentUser) {
+      const oauthUser = await syncSupabaseUserToLocalSession();
+      if (oauthUser) {
+        migrateLegacyDevUserData(oauthUser.id);
+        await migrateLegacyStoreToSupabase(oauthUser.id);
+      }
+      return oauthUser;
+    }
+
     if (currentUser) {
       migrateLegacyDevUserData(currentUser.id);
       await migrateLegacyStoreToSupabase(currentUser.id);
@@ -892,7 +953,9 @@ const createAuthHandlers = () => ({
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
-      
+      options: {
+        redirectTo: window.location.origin,
+      },
     });
 
     if (error) {
