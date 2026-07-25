@@ -266,27 +266,28 @@ export default function UserProfile() {
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
-      {(desktopBanner || mobileBanner) && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-          <div className="sm:hidden">
-            <img
-              src={mobileBanner || desktopBanner}
-              alt={`${profile.username} mobile banner`}
-              className="h-32 w-full object-cover"
-            />
+      <div className="mb-8">
+        {(desktopBanner || mobileBanner) && (
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+            <div className="sm:hidden">
+              <img
+                src={mobileBanner || desktopBanner}
+                alt={`${profile.username} mobile banner`}
+                className="h-40 w-full object-cover"
+              />
+            </div>
+            <div className="hidden sm:block">
+              <img
+                src={desktopBanner || mobileBanner}
+                alt={`${profile.username} banner`}
+                className="h-52 w-full object-cover"
+              />
+            </div>
           </div>
-          <div className="hidden sm:block">
-            <img
-              src={desktopBanner || mobileBanner}
-              alt={`${profile.username} banner`}
-              className="h-44 w-full object-cover"
-            />
-          </div>
-        </div>
-      )}
+        )}
 
-      <div className="flex items-start gap-4 mb-8">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-2xl sm:text-3xl font-bold flex-shrink-0 overflow-hidden">
+        <div className={`flex items-start gap-4 ${desktopBanner || mobileBanner ? "-mt-10 sm:-mt-12 px-3 sm:px-4 relative z-10" : "mt-0"}`}>
+          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-2xl sm:text-3xl font-bold flex-shrink-0 overflow-hidden border-4 border-zinc-950 shadow-lg">
           {profile.avatar_url ? (
             <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
           ) : (
@@ -332,6 +333,7 @@ export default function UserProfile() {
             )}
           </button>
         )}
+      </div>
       </div>
 
       {openConnections && (
