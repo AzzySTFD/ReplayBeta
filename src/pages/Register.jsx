@@ -58,8 +58,10 @@ export default function Register() {
   return (
     <AuthLayout
       icon={UserPlus}
-      title="Create your account"
-      subtitle="Sign up to get started"
+      logoSrc="/spinrate-icon.png"
+      logoAlt="SpinRate logo"
+      title="SpinRate"
+      subtitle="Every spin deserves a rating."
       footer={
         <>
           Already have an account?{" "}

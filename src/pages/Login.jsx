@@ -37,8 +37,10 @@ export default function Login() {
   return (
     <AuthLayout
       icon={LogIn}
-      title="Welcome back"
-      subtitle="Log in to your account"
+      logoSrc="/spinrate-icon.png"
+      logoAlt="SpinRate logo"
+      title="SpinRate"
+      subtitle="Every spin deserves a rating."
       footer={
         <>
           Don't have an account?{" "}
