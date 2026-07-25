@@ -823,6 +823,71 @@ const setStoredTheme = (theme) => {
   }
 };
 
+const normalizeUsername = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+
+const findAvailableUsername = async (requestedUsername, currentUserId) => {
+  const base = normalizeUsername(requestedUsername) || `user${String(currentUserId || '').slice(0, 8)}`;
+
+  for (let index = 0; index < 25; index += 1) {
+    const candidate = index === 0 ? base : `${base}${index + 1}`;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('username', candidate)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.user_id === currentUserId) {
+      return candidate;
+    }
+  }
+
+  return `${base}-${Date.now().toString().slice(-4)}`;
+};
+
+const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmail = '') => {
+  if (!userId) return null;
+
+  const { data: existingProfile, error: existingError } = await supabase
+    .from('profiles')
+    .select('id, user_id, username')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (existingProfile) {
+    return existingProfile;
+  }
+
+  const emailLocalPart = String(fallbackEmail || '').split('@')[0] || '';
+  const resolvedUsername = await findAvailableUsername(preferredUsername || emailLocalPart, userId);
+
+  const profileRow = {
+    user_id: userId,
+    username: resolvedUsername,
+    display_name: resolvedUsername,
+    bio: '',
+    avatar_url: '',
+    social_links: {},
+    discord_channel_id: '',
+    discord_channel_name: '',
+    is_public: true,
+  };
+
+  const { error: upsertError } = await supabase.from('profiles').upsert(profileRow, { onConflict: 'user_id' });
+  if (upsertError) {
+    throw upsertError;
+  }
+
+  return profileRow;
+};
+
 const mapSupabaseUserToStoredUser = (supabaseUser) => {
   if (!supabaseUser) return null;
 
@@ -855,6 +920,8 @@ const syncSupabaseUserToLocalSession = async () => {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.setItem('track-by-track-session', user.id);
     }
+
+    await ensureProfileForUser(user.id, user.username, user.email);
 
     return user;
   } catch {
@@ -964,14 +1031,24 @@ const createAuthHandlers = () => ({
   },
   register: async (payload) => {
     const normalizedEmail = String(payload.email || '').toLowerCase();
+    const normalizedUsername = normalizeUsername(payload.username);
 
     if (!normalizedEmail || !payload.password) {
       throw new Error('Email and password are required');
     }
 
+    if (!normalizedUsername) {
+      throw new Error('Username is required');
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password: payload.password,
+      options: {
+        data: {
+          username: normalizedUsername,
+        },
+      },
     });
 
     if (error || !data?.user) {
@@ -982,7 +1059,7 @@ const createAuthHandlers = () => ({
     const user = {
       id: data.user.id,
       email: data.user.email || normalizedEmail,
-      username: String(payload.username || '').trim(),
+      username: normalizedUsername,
       created_at: data.user.created_at || new Date().toISOString(),
     };
 
@@ -995,6 +1072,8 @@ const createAuthHandlers = () => ({
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('track-by-track-session', user.id);
     }
+
+    await ensureProfileForUser(user.id, normalizedUsername, user.email);
 
     await migrateLegacyStoreToSupabase(user.id);
 

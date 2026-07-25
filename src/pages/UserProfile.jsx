@@ -74,14 +74,32 @@ export default function UserProfile() {
           return {
             id: followerId,
             username: matches[0]?.username || "Unknown user",
+            avatar_url: matches[0]?.avatar_url || "",
           };
         })
       );
 
-      const followingEntries = (followingByUser || []).map((row) => ({
-        id: row.following_id,
-        username: row.following_username || "Unknown user",
-      }));
+      const followingIds = [...new Set((followingByUser || []).map((row) => row.following_id).filter(Boolean))];
+      const followingProfiles = await Promise.all(
+        followingIds.map(async (followingId) => {
+          const matches = await db.entities.Profile.filter({ created_by_id: followingId });
+          return {
+            id: followingId,
+            username: matches[0]?.username || "",
+            avatar_url: matches[0]?.avatar_url || "",
+          };
+        })
+      );
+      const followingProfileById = new Map(followingProfiles.map((entry) => [entry.id, entry]));
+
+      const followingEntries = (followingByUser || []).map((row) => {
+        const matchedProfile = followingProfileById.get(row.following_id);
+        return {
+          id: row.following_id,
+          username: matchedProfile?.username || row.following_username || "Unknown user",
+          avatar_url: matchedProfile?.avatar_url || "",
+        };
+      });
 
       const allReviews = await db.entities.Review.list("-updated_date", 200);
       const profile = profiles[0] || null;
@@ -329,7 +347,18 @@ export default function UserProfile() {
                   onClick={() => entry.id && navigate(`/user/${entry.id}`)}
                   className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06]"
                 >
-                  <span>{entry.username}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
+                      {entry.avatar_url ? (
+                        <img src={entry.avatar_url} alt={entry.username || "User avatar"} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-white/70">
+                          {String(entry.username || "U").charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </span>
+                    <span className="truncate">{entry.username}</span>
+                  </span>
                   <ChevronRight className="h-4 w-4 text-white/40" />
                 </button>
               ))}

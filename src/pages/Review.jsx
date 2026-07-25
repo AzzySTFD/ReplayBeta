@@ -38,6 +38,7 @@ export default function Review() {
   const [editingCommentText, setEditingCommentText] = useState("");
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [commentAvatarByUserId, setCommentAvatarByUserId] = useState({});
 
   const getCurrentDisplayName = useCallback(() => {
     const fromProfile = String(myUsername || "").trim();
@@ -142,6 +143,38 @@ export default function Review() {
       cancelled = true;
     };
   }, [id, isNew, passedAlbum, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCommenterAvatars = async () => {
+      const userIds = [...new Set((comments || []).map((comment) => comment?.userId).filter(Boolean))];
+      if (userIds.length === 0) {
+        if (!cancelled) setCommentAvatarByUserId({});
+        return;
+      }
+
+      const avatarEntries = await Promise.all(
+        userIds.map(async (commentUserId) => {
+          try {
+            const rows = await db.entities.Profile.filter({ created_by_id: commentUserId });
+            return [commentUserId, rows[0]?.avatar_url || ""];
+          } catch {
+            return [commentUserId, ""];
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setCommentAvatarByUserId(Object.fromEntries(avatarEntries));
+      }
+    };
+
+    loadCommenterAvatars();
+    return () => {
+      cancelled = true;
+    };
+  }, [comments]);
 
   const handleRateTrack = useCallback((index, rating) => {
     if (readOnly) return;
@@ -545,17 +578,32 @@ export default function Review() {
         <div className="mt-4 space-y-3">
           {comments.map((comment) => (
             <div key={comment.id} className="rounded-xl border border-white/10 bg-black/10 p-3">
-              <div className="flex items-center justify-between mb-1">
-                {comment.userId ? (
-                  <button
-                    onClick={() => handleGoToUserProfile(comment.userId)}
-                    className="text-sm font-medium text-stone-300 hover:text-stone-200 hover:underline"
-                  >
-                    {comment.userName}
-                  </button>
-                ) : (
-                  <p className="text-sm font-medium text-white/80">{comment.userName}</p>
-                )}
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="h-7 w-7 flex-shrink-0 overflow-hidden rounded-full bg-white/10">
+                    {commentAvatarByUserId[comment.userId] ? (
+                      <img
+                        src={commentAvatarByUserId[comment.userId]}
+                        alt={comment.userName || "Comment avatar"}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-white/70">
+                        {String(comment.userName || "U").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  {comment.userId ? (
+                    <button
+                      onClick={() => handleGoToUserProfile(comment.userId)}
+                      className="truncate text-sm font-medium text-stone-300 hover:text-stone-200 hover:underline"
+                    >
+                      {comment.userName}
+                    </button>
+                  ) : (
+                    <p className="truncate text-sm font-medium text-white/80">{comment.userName}</p>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <p className="text-xs text-white/30">{new Date(comment.created_at).toLocaleString()}</p>
                   {comment.userId === user?.id && (

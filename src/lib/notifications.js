@@ -72,18 +72,37 @@ export const fetchNotificationItems = async (userId) => {
   ]);
 
   const followerIds = [...new Set((incomingFollows || []).map((item) => item.created_by_id).filter(Boolean))];
-  const followerProfiles = await Promise.all(
-    followerIds.map(async (followerId) => {
-      const rows = await db.entities.Profile.filter({ created_by_id: followerId });
-      return { id: followerId, username: rows[0]?.username || "Someone" };
+  const interactionActorIds = new Set();
+
+  for (const review of myReviews) {
+    const reactions = Array.isArray(review.reactions) ? review.reactions : [];
+    const comments = Array.isArray(review.comments) ? review.comments : [];
+    for (const reaction of reactions) {
+      if (reaction?.userId && reaction.userId !== userId) interactionActorIds.add(reaction.userId);
+    }
+    for (const comment of comments) {
+      if (comment?.userId && comment.userId !== userId) interactionActorIds.add(comment.userId);
+    }
+  }
+
+  const profileIds = [...new Set([...followerIds, ...interactionActorIds])];
+  const profiles = await Promise.all(
+    profileIds.map(async (profileUserId) => {
+      const rows = await db.entities.Profile.filter({ created_by_id: profileUserId });
+      return {
+        id: profileUserId,
+        username: rows[0]?.username || "Someone",
+        avatar_url: rows[0]?.avatar_url || "",
+      };
     })
   );
-  const followerNameById = new Map(followerProfiles.map((entry) => [entry.id, entry.username]));
+  const profileById = new Map(profiles.map((entry) => [entry.id, entry]));
 
   const events = [];
 
   for (const follow of incomingFollows) {
-    const followerName = followerNameById.get(follow.created_by_id) || "Someone";
+    const followerProfile = profileById.get(follow.created_by_id);
+    const followerName = followerProfile?.username || "Someone";
     events.push({
       id: `follow-${follow.id}`,
       type: "follow",
@@ -92,6 +111,8 @@ export const fetchNotificationItems = async (userId) => {
       created_at: follow.created_at,
       icon: "follow",
       href: "/discover",
+      actor_avatar_url: followerProfile?.avatar_url || "",
+      actor_user_id: follow.created_by_id || "",
     });
   }
 
@@ -102,27 +123,33 @@ export const fetchNotificationItems = async (userId) => {
 
     for (const reaction of reactions) {
       if (!reaction || reaction.userId === userId) continue;
+      const actorProfile = profileById.get(reaction.userId);
       events.push({
         id: buildInteractionEventId("reaction", review.id, reaction, events.length),
         type: "reaction",
-        title: `${reaction.userName || "Someone"} reacted ${reaction.emoji || ""}`.trim(),
+        title: `${actorProfile?.username || reaction.userName || "Someone"} reacted ${reaction.emoji || ""}`.trim(),
         description: `On your review of ${review.album_title || "an album"}.`,
         created_at: reaction.created_at || review.updated_at || review.created_at,
         icon: "reaction",
         href: reviewHref,
+        actor_avatar_url: actorProfile?.avatar_url || "",
+        actor_user_id: reaction.userId || "",
       });
     }
 
     for (const comment of comments) {
       if (!comment || comment.userId === userId) continue;
+      const actorProfile = profileById.get(comment.userId);
       events.push({
         id: buildInteractionEventId("comment", review.id, comment, events.length),
         type: "comment",
-        title: `${comment.userName || "Someone"} commented on your review`,
+        title: `${actorProfile?.username || comment.userName || "Someone"} commented on your review`,
         description: comment.text || `On your review of ${review.album_title || "an album"}.`,
         created_at: comment.created_at || review.updated_at || review.created_at,
         icon: "comment",
         href: reviewHref,
+        actor_avatar_url: actorProfile?.avatar_url || "",
+        actor_user_id: comment.userId || "",
       });
     }
   }

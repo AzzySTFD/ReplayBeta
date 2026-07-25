@@ -88,8 +88,12 @@ export default function Discover() {
         onClick={() => navigate(`/user/${p.created_by_id}`)}
         className="flex items-center gap-3 flex-1 text-left min-w-0"
       >
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
-          {p.username[0]?.toUpperCase()}
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">
+          {p.avatar_url ? (
+            <img src={p.avatar_url} alt={p.username || "User avatar"} className="h-full w-full object-cover" />
+          ) : (
+            p.username[0]?.toUpperCase()
+          )}
         </div>
         <div className="min-w-0">
           <p className="font-semibold text-sm truncate">{p.username}</p>

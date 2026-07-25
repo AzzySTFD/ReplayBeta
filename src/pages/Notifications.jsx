@@ -133,9 +133,15 @@ export default function Notifications() {
               onClick={() => navigate(item.href)}
               className="group flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition-colors hover:bg-white/[0.05]"
             >
-              <div className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/15 text-white/80">
-                {iconFor(item.icon)}
-              </div>
+              {item.actor_avatar_url ? (
+                <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border border-white/15">
+                  <img src={item.actor_avatar_url} alt="Notification avatar" className="h-full w-full object-cover" />
+                </div>
+              ) : (
+                <div className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/15 text-white/80">
+                  {iconFor(item.icon)}
+                </div>
+              )}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white">{item.title}</p>
                 <p className="truncate text-xs text-white/50">{item.description}</p>
