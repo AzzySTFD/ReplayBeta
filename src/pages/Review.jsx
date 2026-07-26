@@ -29,6 +29,7 @@ export default function Review() {
   const [manualRating, setManualRating] = useState(0);
   const [notes, setNotes] = useState("");
   const [reviewId, setReviewId] = useState(isNew ? null : id);
+  const [reviewOwnerId, setReviewOwnerId] = useState("");
   const [readOnly, setReadOnly] = useState(false);
   const [myUsername, setMyUsername] = useState("");
   const [myDisplayName, setMyDisplayName] = useState("");
@@ -101,13 +102,11 @@ export default function Review() {
 
     const loadData = async () => {
       try {
-        let profileUsername = "";
         if (user) {
           try {
             const profiles = await db.entities.Profile.filter({ created_by_id: user.id });
             if (profiles.length > 0) {
-              profileUsername = profiles[0].username || "";
-              setMyUsername(profileUsername);
+              setMyUsername(profiles[0].username || "");
               setMyDisplayName(profiles[0].display_name || profiles[0].username || "");
             }
           } catch (e) {
@@ -147,9 +146,8 @@ export default function Review() {
           setNotes(review.notes || "");
           setReviewerName(review.username || "");
           setSelectedFolderId(review.folder_id || "");
-          const isOwner = review.created_by_id
-            ? review.created_by_id === user?.id
-            : Boolean(user && profileUsername && review.username && review.username === profileUsername);
+          setReviewOwnerId(review.created_by_id || "");
+          const isOwner = Boolean(review.created_by_id && review.created_by_id === user?.id);
           setReadOnly(!isOwner);
         }
       } catch (e) {
@@ -343,6 +341,10 @@ export default function Review() {
 
   const handleDelete = async () => {
     if (!reviewId || !user) return;
+    if (reviewOwnerId && reviewOwnerId !== user.id) {
+      toast({ variant: "destructive", title: "Not allowed", description: "You can only delete your own review." });
+      return;
+    }
 
     try {
       await db.entities.Review.delete(reviewId);
@@ -379,6 +381,11 @@ export default function Review() {
   };
 
   const handleSave = async () => {
+    if (!isNew && reviewOwnerId && reviewOwnerId !== user?.id) {
+      toast({ variant: "destructive", title: "Not allowed", description: "You can only edit your own review." });
+      return;
+    }
+
     setSaving(true);
     try {
       const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
@@ -549,29 +556,31 @@ export default function Review() {
         </div>
       </div>
 
-      <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-1">Folder</h2>
-            <p className="text-sm text-white/40">Place this review into a custom folder for easier sorting.</p>
-          </div>
-          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-            <FolderOpen className="h-4 w-4 text-stone-400" />
-            <select
-              value={selectedFolderId}
-              onChange={(e) => setSelectedFolderId(e.target.value)}
-              className="bg-transparent text-sm text-white outline-none"
-            >
-              <option value="" className="bg-zinc-900">No folder</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={folder.id} className="bg-zinc-900">
-                  {folder.name}
-                </option>
-              ))}
-            </select>
+      {!readOnly && (
+        <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-1">Folder</h2>
+              <p className="text-sm text-white/40">Place this review into a custom folder for easier sorting.</p>
+            </div>
+            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+              <FolderOpen className="h-4 w-4 text-stone-400" />
+              <select
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(e.target.value)}
+                className="bg-transparent text-sm text-white outline-none"
+              >
+                <option value="" className="bg-zinc-900">No folder</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id} className="bg-zinc-900">
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="mb-8">
         <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Track List</h2>
