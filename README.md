@@ -1,77 +1,210 @@
-# Base44 Project
+# 🎵 SpinRate
 
-Use this repository to run and edit the app locally, then publish changes back through db.
+> **Spin it. Rate it. Share it.**
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+SpinRate is a modern music review platform built for people who listen to **albums**, not just playlists.
 
-## Prerequisites
+Instead of giving an entire album a single score, SpinRate lets you rate **every individual track**, automatically calculates an overall album rating, and gives you a place to record your thoughts about the music you love.
 
-1. Clone the repository using the project's Git URL.
-2. Navigate to the project directory.
-3. Install dependencies: `npm install`.
-4. Install the Base44 CLI: `npm install -g base44@latest`.
+Whether you're listening to the newest release or revisiting a classic, SpinRate helps you build your own musical history.
 
-See the [Base44 CLI docs](https://docs.db.com/developers/references/cli/get-started/overview) if you want to run Base44 commands directly.
+---
 
-## Run Locally
+## ✨ Features
 
-Run the full local development environment from the project root:
+### 🎧 Album Search
+
+* Search for albums from a growing music database
+* Automatically display album artwork
+* View complete track listings
+
+### ⭐ Track-by-Track Ratings
+
+* Rate every song individually
+* No more averaging an entire album into one number
+* Album score is calculated from your track ratings
+
+### 📝 Album Reviews
+
+* Write full reviews after listening
+* Record your thoughts and opinions
+* Keep a personal listening journal
+
+### 👤 User Profiles
+
+* Create your own profile
+* Build your personal music library
+* Track albums you've reviewed
+
+### 📊 Statistics *(Coming Soon)*
+
+* Highest rated albums
+* Favorite artists
+* Listening trends
+* Rating history
+
+### 🤝 Social Features *(Planned)*
+
+* Follow friends
+* Activity feed
+* Like and comment on reviews
+* Share favorite albums
+
+---
+
+# 🚀 Tech Stack
+
+### Frontend
+
+* React
+* Vite
+* TypeScript
+* Tailwind CSS
+
+### Backend
+
+* Supabase
+
+  * Authentication
+  * PostgreSQL Database
+  * Row Level Security
+
+### Hosting
+
+* Vercel
+
+### Other Services
+
+* Music metadata APIs
+* Album artwork providers
+
+---
+
+# 📸 Screenshots
+
+> Screenshots coming soon.
+
+---
+
+# 🛣️ Roadmap
+
+## Phase 1 (Current)
+
+* [x] React + Vite setup
+* [x] Mobile-first UI
+* [x] Authentication
+* [x] Supabase migration
+* [x] Album search
+* [x] Album pages
+* [x] Track ratings
+* [x] Album reviews
+
+---
+
+## Phase 2
+
+* [x] User profiles
+* [x] Review history
+* [x] Followers
+* [ ] Social feed
+* [ ] Rating statistics
+* [x] Search improvements
+
+---
+
+## Phase 3
+
+* [ ] Artist pages
+* [ ] Genre discovery
+* [ ] Personalized recommendations
+* [ ] Wrapped-style yearly recap
+* [ ] Mobile apps (iOS & Android)
+
+---
+
+# 💡 Why SpinRate?
+
+Most music apps focus on streaming.
+
+Most review sites ask you for a single album score.
+
+SpinRate is different.
+
+Albums are made of individual songs, and every song deserves its own rating.
+
+By scoring every track first, SpinRate creates a more meaningful overall album rating while preserving your complete listening experience.
+
+---
+
+# 🖥️ Running Locally
+
+Clone the repository:
 
 ```bash
-base44 dev
+git clone https://github.com/yourusername/spinrate.git
 ```
 
-`base44 dev` starts the local Base44 development backend and, when this app is configured for it, also starts the frontend dev server for you. Use the frontend URL printed by the command.
+Install dependencies:
 
-For example, when the Base44 project config includes a `serveCommand`, `base44 dev` can launch the frontend too:
-
-```json5
-{
-  "site": {
-    "serveCommand": "npm run dev"
-  }
-}
+```bash
+npm install
 ```
 
-In a Base44 project this lives in `base44/config.jsonc`.
-
-## Run Only The Frontend
-
-If you only want to work on the frontend against the hosted Base44 backend, run:
+Start the development server:
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed by Vite.
-
-## Use The Hosted Backend
-
-For frontend-only development, create or update `.env.local` in the project root:
+Build for production:
 
 ```bash
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=https://your-app.db.app
+npm run build
 ```
 
-`VITE_BASE44_APP_ID` identifies the Base44 app.
+---
 
-`VITE_BASE44_APP_BASE_URL` tells the Base44 Vite plugin where to send local `/api` requests. Point it at your deployed Base44 app URL when you want the local frontend to use the hosted backend.
+# 📁 Project Structure
 
-When you use `base44 dev`, the command injects the local Base44 values for you, so `.env.local` is mainly needed for frontend-only workflows.
-
-## Publish Your Changes
-
-After pushing your changes to git, open the Base44 dashboard and publish the app:
-
-```bash
-base44 dashboard open
+```text
+src/
+ ├── components/
+ ├── pages/
+ ├── hooks/
+ ├── lib/
+ ├── services/
+ ├── assets/
+ └── App.tsx
 ```
 
-## Docs & Support
+---
 
-Documentation: [https://docs.db.com/Integrations/Using-GitHub](https://docs.db.com/Integrations/Using-GitHub)
+# 🤝 Contributing
 
-Base44 CLI command reference: [https://docs.db.com/developers/references/cli/commands/introduction](https://docs.db.com/developers/references/cli/commands/introduction)
+Contributions are welcome!
 
-Support: [https://app.db.com/support](https://app.db.com/support)
+If you'd like to improve SpinRate, feel free to:
+
+* Fork the repository
+* Create a feature branch
+* Submit a Pull Request
+
+Bug reports and feature suggestions are always appreciated.
+
+---
+
+# 📬 Contact
+
+Questions, suggestions, or feedback?
+
+📧 **[support@spinrate.me](mailto:support@spinrate.me)**
+
+---
+
+# 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+
