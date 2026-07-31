@@ -8,7 +8,20 @@ import { Button } from "@/components/ui/button";
 import TrackList from "@/components/TrackList";
 import RatingScale from "@/components/RatingScale";
 import { useToast } from "@/components/ui/use-toast";
-import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X, Shuffle } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X, Shuffle, Clock3, Disc3, ListMusic, Building2, Tag } from "lucide-react";
+
+const formatRuntime = (runtimeMs) => {
+  if (!Number.isFinite(runtimeMs) || runtimeMs <= 0) return "Unavailable";
+  const totalMinutes = Math.floor(runtimeMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+};
+
+const formatAlbumType = (albumType) => {
+  if (!albumType) return "Unavailable";
+  return albumType.charAt(0).toUpperCase() + albumType.slice(1);
+};
 
 export default function Review() {
   const { id } = useParams();
@@ -47,10 +60,18 @@ export default function Review() {
     if (!selectedAlbum) return;
 
     setAlbum({
+      id: selectedAlbum.id || "",
       title: selectedAlbum.title,
       artist: selectedAlbum.artist,
       artwork_url: selectedAlbum.artwork_url,
       release_year: selectedAlbum.release_year || "",
+      release_date: selectedAlbum.release_date || "",
+      album_type: selectedAlbum.album_type || "",
+      track_count: selectedAlbum.track_count || null,
+      label: selectedAlbum.label || "",
+      genres: selectedAlbum.genres || [],
+      runtime_ms: selectedAlbum.runtime_ms || null,
+      credits: selectedAlbum.credits || [],
     });
 
     if (resetDraft) {
@@ -72,6 +93,9 @@ export default function Review() {
         rating: 0,
       }));
       setTracks(fetchedTracks);
+      if (resp.data.album) {
+        setAlbum((currentAlbum) => ({ ...currentAlbum, ...resp.data.album }));
+      }
       return;
     }
 
@@ -135,10 +159,18 @@ export default function Review() {
           setComments((reviewComments[0]?.comments || []));
           if (cancelled) return;
           setAlbum({
+            id: review.spotify_album_id || "",
             title: review.album_title,
             artist: review.artist,
             artwork_url: review.album_art_url,
             release_year: review.release_year || "",
+            release_date: review.release_year || "",
+            album_type: "",
+            track_count: review.tracks?.length || null,
+            label: "",
+            genres: [],
+            runtime_ms: null,
+            credits: [],
           });
           setTracks(review.tracks || []);
           setUseManualRating(review.use_manual_rating || false);
@@ -149,6 +181,15 @@ export default function Review() {
           setReviewOwnerId(review.created_by_id || "");
           const isOwner = Boolean(review.created_by_id && review.created_by_id === user?.id);
           setReadOnly(!isOwner);
+
+          if (review.spotify_album_id) {
+            const metadataResponse = await db.functions.invoke("spotifyAlbumTracks", {
+              albumId: review.spotify_album_id,
+            });
+            if (!cancelled && metadataResponse.data.album) {
+              setAlbum((currentAlbum) => ({ ...currentAlbum, ...metadataResponse.data.album }));
+            }
+          }
         }
       } catch (e) {
         console.error(e);
@@ -391,6 +432,7 @@ export default function Review() {
       const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
       const payload = {
         created_by_id: user?.id || null,
+        spotify_album_id: album.id || "",
         album_title: album.title,
         artist: album.artist,
         album_art_url: album.artwork_url || "",
@@ -497,23 +539,97 @@ export default function Review() {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-6 mb-8">
-        <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-2xl overflow-hidden bg-white/5 flex-shrink-0 shadow-2xl shadow-black/50 mx-auto sm:mx-0">
-          {album.artwork_url && (
-            <Image src={album.artwork_url} alt={album.title} fittingType="fill" className="w-full h-full" />
-          )}
-        </div>
-        <div className="flex-1 flex flex-col justify-end text-center sm:text-left">
-          <p className="text-stone-400 text-xs font-semibold uppercase tracking-wider mb-1">Album Review</p>
-          <h1 className="text-2xl sm:text-3xl font-bold leading-tight mb-1">{album.title}</h1>
-          <p className="text-white/50 text-lg mb-2">{album.artist}</p>
-          {album.release_year && (
-            <div className="flex items-center justify-center sm:justify-start gap-1.5 text-white/30 text-sm">
-              <Calendar className="w-3.5 h-3.5" /> {album.release_year}
+      <section className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] shadow-2xl shadow-black/30" aria-labelledby="album-title">
+        <div className="grid gap-0 lg:grid-cols-[minmax(15rem,22rem)_1fr]">
+          <div className="relative aspect-square w-full overflow-hidden bg-white/[0.04] lg:min-h-full">
+            {album.artwork_url ? (
+              <Image src={album.artwork_url} alt={`Cover art for ${album.title}`} fittingType="fill" className="h-full w-full" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-white/25">
+                <Music2 className="h-12 w-12" aria-hidden="true" />
+                <span className="sr-only">Album artwork unavailable</span>
+              </div>
+            )}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/60 to-transparent lg:hidden" />
+          </div>
+
+          <div className="flex min-w-0 flex-col p-5 sm:p-7">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-stone-400">Album review</p>
+            <h1 id="album-title" className="text-3xl font-bold leading-[1.08] tracking-tight text-white sm:text-4xl">{album.title}</h1>
+            <p className="mt-2 text-lg text-white/60 sm:text-xl">{album.artist}</p>
+
+            {album.genres?.length > 0 && (
+              <div className="mt-5 flex flex-wrap gap-2" aria-label="Album genres">
+                {album.genres.map((genre) => (
+                  <a
+                    key={genre}
+                    href={`https://open.spotify.com/search/${encodeURIComponent(genre)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-stone-400/25 bg-stone-400/10 px-3 py-1 text-xs font-medium text-stone-200 transition-colors hover:border-stone-300/50 hover:bg-stone-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"
+                  >
+                    {genre}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Album metadata">
+              <div className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                <Calendar className="mb-2 h-4 w-4 text-stone-400" aria-hidden="true" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">Released</p>
+                <p className="mt-0.5 text-sm font-medium text-white/80">{album.release_date || album.release_year || "Unavailable"}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                <Clock3 className="mb-2 h-4 w-4 text-stone-400" aria-hidden="true" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">Runtime</p>
+                <p className="mt-0.5 text-sm font-medium text-white/80">{formatRuntime(album.runtime_ms)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                <ListMusic className="mb-2 h-4 w-4 text-stone-400" aria-hidden="true" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">Tracks</p>
+                <p className="mt-0.5 text-sm font-medium text-white/80">{album.track_count || "Unavailable"}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                <Disc3 className="mb-2 h-4 w-4 text-stone-400" aria-hidden="true" />
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">Format</p>
+                <p className="mt-0.5 text-sm font-medium text-white/80">{formatAlbumType(album.album_type)}</p>
+              </div>
             </div>
-          )}
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
+                <Building2 className="h-4 w-4 flex-shrink-0 text-stone-400" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">Record label</p>
+                  <p className="truncate text-sm font-medium text-white/80">{album.label || "Unavailable"}</p>
+                </div>
+              </div>
+              <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
+                <Tag className="h-4 w-4 flex-shrink-0 text-stone-400" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">Metadata source</p>
+                  <p className="truncate text-sm font-medium text-white/80">Spotify</p>
+                </div>
+              </div>
+            </div>
+
+            {album.credits?.length > 0 && (
+              <div className="mt-5 border-t border-white/10 pt-5">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">Credits</h2>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {album.credits.map((credit) => (
+                    <div key={`${credit.role}-${credit.name}`} className="rounded-xl bg-black/15 px-3 py-2">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-white/35">{credit.role}</dt>
+                      <dd className="mt-0.5 text-sm text-white/80">{credit.name}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
 
       <div className="mb-8 p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-stone-600/10 to-slate-600/10 border border-stone-500/20">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">

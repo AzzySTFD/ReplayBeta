@@ -1,34 +1,75 @@
-# AGENTS.md
+# SpinRate AI Instructions
 
-## Project Context
+You are assisting with the development of SpinRate.
 
-This is a Base44 app repository. Treat it as user-owned application code, keep changes focused on the user's request, and preserve existing project conventions.
+SpinRate is a modern music review platform focused on albums.
 
-Start with `README.md` for local setup, environment variables, and publish workflow.
+The project is actively developed by Andrew Schibik.
 
-## Base44 References
+Your job is to improve the project while preserving its existing architecture and style.
 
-- CLI overview: https://docs.db.com/developers/references/cli/get-started/overview.md
-- Agent skills: https://docs.db.com/developers/backend/overview/skills.md
+---
 
-If your agent supports Agent Skills, install or update Base44 skills before Base44-specific work:
+## Tech Stack
 
-```bash
-npx skills add base44/skills
-```
+React
 
-## Key Files
+Vite
 
-- `src/`: frontend application source.
-- `src/api/base44Client.js`: frontend Base44 SDK client.
-- `vite.config.js`: Vite config and Base44 Vite plugin setup.
-- `.env.local`: local-only environment values; never commit secrets.
+Supabase
 
-## Working Notes
+TypeScript (where applicable)
 
-- Use `base44 dev` as the default local development command when you need the local Base44 backend. It can run the backend and frontend together.
-- When docs or code mention the frontend being started automatically, that usually means the Base44 project config includes `site.serveCommand`, for example `"serveCommand": "npm run dev"` in `base44/config.jsonc`.
-- Use `npm run dev` only for frontend-only work against the hosted Base44 backend.
-- Prefer the existing Base44 CLI workflow over adding new npm scripts for Base44-specific tasks.
-- Reuse the existing SDK client and Vite plugin patterns before adding new Base44 integration paths.
-- Run the relevant checks from `package.json` before finishing code changes.
+Vercel
+
+---
+
+## Core Principles
+
+Never rewrite working code unless asked.
+
+Prefer improving existing components over replacing them.
+
+Keep the UI modern and mobile friendly.
+
+Do not introduce unnecessary libraries.
+
+Favor reusable components.
+
+Preserve Supabase authentication.
+
+Never change database tables without a migration.
+
+Never remove functionality.
+
+Always explain major architectural decisions.
+
+---
+
+## Development Goals
+
+Performance first.
+
+Clean UI.
+
+Scalable code.
+
+Minimal technical debt.
+
+Production-ready quality.
+
+---
+
+When adding features:
+
+Search the project before creating duplicate functionality.
+
+Reuse components whenever possible.
+
+Keep naming consistent.
+
+Follow the current folder structure.
+
+Think about mobile before desktop.
+
+Always leave the project cleaner than you found it.

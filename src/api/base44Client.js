@@ -1213,7 +1213,7 @@ const localFunctions = {
       }
 
       const body = await response.json();
-      return { data: { tracks: body.tracks || [] } };
+      return { data: { tracks: body.tracks || [], album: body.album || null } };
     }
 
     if (name === 'getNotableReleases') {

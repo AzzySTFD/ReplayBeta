@@ -1,4 +1,4 @@
-import { spotifyFetch } from "../../_lib/spotify.js";
+import { mapSpotifyAlbumDetails, spotifyFetch } from "../../_lib/spotify.js";
 
 const resolveAlbumId = (req) => {
   const fromQuery = req.query?.albumId;
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
 
     const data = await spotifyFetch(`/albums/${encodeURIComponent(albumId)}?market=US`);
     if (!data) {
-      return res.status(200).json({ tracks: [] });
+      return res.status(200).json({ tracks: [], album: null });
     }
 
     const tracks = (data.tracks?.items || []).map((track) => ({
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       title: track.name,
     }));
 
-    return res.status(200).json({ tracks });
+    return res.status(200).json({ tracks, album: mapSpotifyAlbumDetails(data) });
   } catch (error) {
     console.error("Spotify tracks API error", error);
     return res.status(500).json({ error: error.message || "Spotify album tracks failed" });

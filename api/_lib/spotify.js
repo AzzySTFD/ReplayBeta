@@ -51,3 +51,21 @@ export const mapSpotifyAlbum = (album) => ({
   release_year: (album.release_date || "").slice(0, 4),
   album_type: album.album_type || "album",
 });
+
+export const mapSpotifyAlbumDetails = (album) => {
+  const albumTracks = album.tracks?.items || [];
+  const totalTracks = Number(album.total_tracks ?? album.tracks?.total ?? 0);
+  const hasCompleteTrackList = totalTracks > 0 && albumTracks.length >= totalTracks;
+
+  return {
+    ...mapSpotifyAlbum(album),
+    release_date: album.release_date || "",
+    track_count: totalTracks || null,
+    label: album.label || "",
+    genres: Array.isArray(album.genres) ? album.genres.filter(Boolean) : [],
+    runtime_ms: hasCompleteTrackList
+      ? albumTracks.reduce((total, track) => total + Number(track.duration_ms || 0), 0)
+      : null,
+    credits: [],
+  };
+};

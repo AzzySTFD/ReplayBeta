@@ -63,6 +63,29 @@ const spotifyFetch = async (path) => {
   return response.json();
 };
 
+const mapSpotifyAlbumDetails = (album) => {
+  const albumTracks = album.tracks?.items || [];
+  const totalTracks = Number(album.total_tracks ?? album.tracks?.total ?? 0);
+  const hasCompleteTrackList = totalTracks > 0 && albumTracks.length >= totalTracks;
+
+  return {
+    id: album.id,
+    title: album.name,
+    artist: (album.artists || []).map((artist) => artist.name).join(', '),
+    artwork_url: (album.images || []).find((image) => image.width >= 300)?.url || album.images?.[0]?.url || '',
+    release_year: (album.release_date || '').slice(0, 4),
+    release_date: album.release_date || '',
+    album_type: album.album_type || 'album',
+    track_count: totalTracks || null,
+    label: album.label || '',
+    genres: Array.isArray(album.genres) ? album.genres.filter(Boolean) : [],
+    runtime_ms: hasCompleteTrackList
+      ? albumTracks.reduce((total, track) => total + Number(track.duration_ms || 0), 0)
+      : null,
+    credits: [],
+  };
+};
+
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
 
 const pickRandomSeed = () => {
@@ -145,7 +168,7 @@ app.get('/api/spotify/albums/:albumId/tracks', async (req, res) => {
   try {
     const data = await spotifyFetch(`/albums/${req.params.albumId}?market=US`);
     if (!data) {
-      return res.json({ tracks: [] });
+      return res.json({ tracks: [], album: null });
     }
 
     const tracks = (data.tracks?.items || []).map((track) => ({
@@ -153,7 +176,7 @@ app.get('/api/spotify/albums/:albumId/tracks', async (req, res) => {
       title: track.name,
     }));
 
-    return res.json({ tracks });
+    return res.json({ tracks, album: mapSpotifyAlbumDetails(data) });
   } catch (error) {
     console.error('Spotify album tracks proxy error', error);
     return res.status(500).json({ error: error.message || 'Spotify album tracks failed' });
@@ -169,7 +192,7 @@ app.get('/api/spotify/albums/tracks', async (req, res) => {
 
     const data = await spotifyFetch(`/albums/${encodeURIComponent(albumId)}?market=US`);
     if (!data) {
-      return res.json({ tracks: [] });
+      return res.json({ tracks: [], album: null });
     }
 
     const tracks = (data.tracks?.items || []).map((track) => ({
@@ -177,7 +200,7 @@ app.get('/api/spotify/albums/tracks', async (req, res) => {
       title: track.name,
     }));
 
-    return res.json({ tracks });
+    return res.json({ tracks, album: mapSpotifyAlbumDetails(data) });
   } catch (error) {
     console.error('Spotify album tracks proxy error', error);
     return res.status(500).json({ error: error.message || 'Spotify album tracks failed' });
