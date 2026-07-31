@@ -31,7 +31,11 @@ Every provider implements `MetadataProvider`:
 - `getArtist` and `getAlbum` retrieve a single source record and normalize it.
 - Providers own API authentication, request limits, raw response parsing, and source-specific identifier handling when those integrations are added.
 
-The included MusicBrainz, Spotify, and Last.fm classes are placeholders. They intentionally throw a clear not-implemented error and make no API calls.
+`MusicBrainzProvider` is the first working provider. It searches artists and release groups, looks up artists by MBID, and enriches release-group lookups with a representative official release for labels and tracks. It returns only normalized models.
+
+The provider identifies itself with a User-Agent and enforces MusicBrainz's one-request-per-second guidance by default. This is request throttling only; it does not cache data.
+
+`SpotifyProvider` and `LastFmProvider` remain placeholders. They intentionally throw a clear not-implemented error and make no API calls.
 
 ## MetadataService responsibilities
 
