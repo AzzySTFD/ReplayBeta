@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normalizeLegacyRatingValue, normalizeTrackRatings } from '../utils/ratings/RatingUtils.js';
+import { mapReviewRowToEntity, normalizeReviewRowRatings } from './reviewRowMapping.js';
 
 const STORAGE_KEY = 'track-by-track-local-store-v1';
 let memoryStore = {};
@@ -661,40 +662,6 @@ const createFollowCollection = () => ({
 
     return { id };
   },
-});
-
-const mapReviewRowToEntity = (row) => {
-  if (!row) return null;
-
-  return {
-    id: row.id,
-    created_by_id: row.created_by_id || row.user_id,
-    username: row.username || '',
-    spotify_album_id: row.spotify_album_id || '',
-    spotify_artist_id: row.spotify_artist_id || '',
-    album_title: row.album_title || '',
-    artist: row.artist || '',
-    album_art_url: row.album_art_url || '',
-    release_year: row.release_year || '',
-    tracks: row.tracks || [],
-    album_rating: row.album_rating ?? 0,
-    use_manual_rating: row.use_manual_rating ?? false,
-    manual_rating: row.manual_rating ?? 0,
-    notes: row.notes || '',
-    reactions: row.reactions || [],
-    comments: row.comments || [],
-    folder_id: row.folder_id || null,
-    folder_name: row.folder_name || '',
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-};
-
-const normalizeReviewRowRatings = (row) => ({
-  ...row,
-  album_rating: normalizeLegacyRatingValue(row?.album_rating ?? 0),
-  manual_rating: normalizeLegacyRatingValue(row?.manual_rating ?? 0),
-  tracks: normalizeTrackRatings(row?.tracks || []),
 });
 
 const migrateReviewRowsToCanonicalRatings = async (rows = []) => {
