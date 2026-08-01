@@ -251,7 +251,8 @@ export default function ProfilePage() {
 
   const handleViewPublicProfile = () => {
     if (!user?.id) return;
-    navigate(`/user/${user.id}`);
+    const slug = String(profile?.username || username || user.id).trim();
+    navigate(`/user/${slug}`);
   };
 
   const extractImportQuery = (value) => {

@@ -43,7 +43,8 @@ const buildSocialHref = (key, value = "") => {
 };
 
 export default function UserProfile() {
-  const { userId } = useParams();
+  const params = useParams();
+  const routeIdentifier = params.userId || params.username || "";
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -74,8 +75,17 @@ export default function UserProfile() {
 
   const loadData = useCallback(async () => {
     try {
-      const resolvedProfile = await resolveProfile(userId);
-      const resolvedUserId = resolvedProfile?.created_by_id || userId;
+      const resolvedProfile = await resolveProfile(routeIdentifier);
+      const resolvedUserId = resolvedProfile?.created_by_id || routeIdentifier;
+
+      if (
+        resolvedProfile?.username
+        && routeIdentifier
+        && routeIdentifier !== resolvedProfile.username
+        && (routeIdentifier === resolvedProfile.created_by_id || routeIdentifier === resolvedProfile.id)
+      ) {
+        navigate(`/user/${resolvedProfile.username}`, { replace: true });
+      }
 
       const [profilesResult, userReviewsResult, myFollowsResult, userFoldersResult, followersOfUserResult, followingByUserResult] = await Promise.allSettled([
         resolvedProfile ? Promise.resolve([resolvedProfile]) : db.entities.Profile.filter({ created_by_id: resolvedUserId }),
@@ -138,7 +148,7 @@ export default function UserProfile() {
       const profile = profiles[0] || resolvedProfile || null;
       const fallbackReviews = allReviews.filter((review) => {
         if (review.created_by_id === resolvedUserId) return true;
-        if (review.created_by_id === userId) return true;
+        if (review.created_by_id === routeIdentifier) return true;
         if (profile && review.created_by_id === profile.created_by_id) return true;
         if (profile && review.created_by_id === profile.id) return true;
         return false;
@@ -161,7 +171,7 @@ export default function UserProfile() {
     } finally {
       setLoading(false);
     }
-  }, [userId, currentUser]);
+  }, [routeIdentifier, currentUser, navigate, resolveProfile]);
 
   useEffect(() => {
     loadData();
@@ -184,13 +194,13 @@ export default function UserProfile() {
       const tempId = `temp-${Date.now()}`;
       const tempRecord = {
         id: tempId,
-        following_id: userId,
+        following_id: profile?.created_by_id || routeIdentifier,
         following_username: profile?.username || "",
       };
       setFollowRecord(tempRecord);
       try {
         const created = await db.entities.Follow.create({
-          following_id: userId,
+          following_id: profile?.created_by_id || routeIdentifier,
           following_username: profile?.username || "",
         });
         setFollowRecord(created);
@@ -202,7 +212,7 @@ export default function UserProfile() {
     }
   };
 
-  const isOwn = currentUser?.id === userId;
+  const isOwn = currentUser?.id === (profile?.created_by_id || routeIdentifier);
   const socialLinks = profile?.social_links || {};
   const customization = socialLinks.profile_customization || {};
   const desktopBanner = String(customization.banner_desktop || "").trim();
@@ -302,8 +312,8 @@ export default function UserProfile() {
   };
 
   const displayProfile = profile || {
-    username: String(userId || "user").slice(0, 24),
-    display_name: String(userId || "User").slice(0, 24),
+    username: String(routeIdentifier || "user").slice(0, 24),
+    display_name: String(routeIdentifier || "User").slice(0, 24),
     bio: "",
     avatar_url: "",
     social_links: {},
@@ -425,7 +435,7 @@ export default function UserProfile() {
               {(openConnections === "followers" ? followers : following).map((entry) => (
                 <button
                   key={`${openConnections}-${entry.id}-${entry.username}`}
-                  onClick={() => entry.id && navigate(`/user/${entry.id}`)}
+                  onClick={() => (entry.username || entry.id) && navigate(`/user/${entry.username || entry.id}`)}
                   className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06]"
                 >
                   <span className="flex min-w-0 items-center gap-2">

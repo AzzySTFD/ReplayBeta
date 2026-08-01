@@ -88,7 +88,7 @@ export default function Discover() {
       className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-colors"
     >
       <button
-        onClick={() => navigate(`/user/${p.created_by_id}`)}
+        onClick={() => navigate(`/user/${p.username || p.created_by_id}`)}
         className="flex items-center gap-3 flex-1 text-left min-w-0"
       >
         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">

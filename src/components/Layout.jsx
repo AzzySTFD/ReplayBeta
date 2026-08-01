@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/AuthContext";
 
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { Disc, Compass, User as UserIcon, LogOut, Home as HomeIcon, Bell } from "lucide-react";
+import { db } from "@/api/base44Client";
 import { computeUnreadCount, fetchNotificationItems } from "@/lib/notifications";
 
 const BRAND_NAME = "SpinRate";
@@ -40,7 +41,36 @@ export default function Layout() {
   useDarkMode();
 
   const [unreadCount, setUnreadCount] = useState(0);
-  const profilePath = user?.id ? `/user/${user.id}` : "/profile";
+  const [profilePath, setProfilePath] = useState(user?.id ? `/user/${user.id}` : "/profile");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfilePath = async () => {
+      if (!user?.id) {
+        if (!cancelled) setProfilePath("/profile");
+        return;
+      }
+
+      try {
+        const profiles = await db.entities.Profile.filter({ created_by_id: user.id });
+        const username = String(profiles?.[0]?.username || "").trim();
+        if (!cancelled) {
+          setProfilePath(username ? `/user/${username}` : `/user/${user.id}`);
+        }
+      } catch {
+        if (!cancelled) {
+          setProfilePath(`/user/${user.id}`);
+        }
+      }
+    };
+
+    loadProfilePath();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +202,7 @@ export default function Layout() {
         <div className="flex items-center justify-around h-16 px-2 py-1">
           {navItems.map((item) => {
             const active = item.isProfile
-              ? location.pathname === "/profile" || location.pathname.startsWith("/user/")
+              ? location.pathname === "/profile" || location.pathname.startsWith("/user/") || location.pathname.startsWith("/@")
               : location.pathname === item.to;
             return (
               <Link

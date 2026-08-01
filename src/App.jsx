@@ -70,6 +70,7 @@ const AuthenticatedApp = () => {
             <Route path="/notifications" element={<MotionPage><Notifications /></MotionPage>} />
             <Route path="/profile" element={<MotionPage><ProfilePage /></MotionPage>} />
             <Route path="/user/:userId" element={<MotionPage><UserProfile /></MotionPage>} />
+            <Route path="/@:username" element={<MotionPage><UserProfile /></MotionPage>} />
             <Route path="/review/:id" element={<MotionPage><Review /></MotionPage>} />
           </Route>
         </Route>
