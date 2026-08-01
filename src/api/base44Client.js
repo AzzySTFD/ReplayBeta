@@ -268,23 +268,28 @@ const createProfileCollection = () => ({
     return (data || []).map(mapProfileRowToEntity);
   },
   filter: async (criteria = {}) => {
-    let query = supabase.from('profiles').select('*');
-
-    for (const [key, value] of Object.entries(criteria)) {
-      if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('user_id', value);
-      } else {
-        query = query.eq(key, value);
-      }
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
 
     if (error) {
       throw error;
     }
 
-    return (data || []).map(mapProfileRowToEntity);
+    const rows = (data || []).map(mapProfileRowToEntity);
+    const entries = Object.entries(criteria);
+    if (entries.length === 0) {
+      return rows;
+    }
+
+    return rows.filter((row) => entries.every(([key, value]) => {
+      if (key === 'created_by_id' || key === 'user_id') {
+        return row.created_by_id === value;
+      }
+
+      return row[key] === value;
+    }));
   },
   get: async (id) => {
     const { data, error } = await supabase
@@ -617,7 +622,7 @@ const mapReviewRowToEntity = (row) => {
 
   return {
     id: row.id,
-    created_by_id: row.user_id,
+    created_by_id: row.user_id || row.created_by_id,
     username: row.username || '',
     spotify_album_id: row.spotify_album_id || '',
     spotify_artist_id: row.spotify_artist_id || '',
@@ -714,31 +719,31 @@ const createReviewCollection = () => ({
   },
   filter: async (criteria = {}, orderBy, limit) => {
     const { column, ascending } = toSupabaseOrder(orderBy, 'updated_at');
-    let query = supabase.from('reviews').select('*');
-
-    for (const [key, value] of Object.entries(criteria)) {
-      if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('user_id', value);
-      } else {
-        query = query.eq(key, value);
-      }
-    }
-
-    query = query.order(column, { ascending });
-
-    if (Number.isFinite(limit)) {
-      query = query.limit(limit);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .order(column, { ascending });
 
     if (error) {
       throw error;
     }
 
-    await migrateReviewRowsToCanonicalRatings(data || []);
+    const rows = (data || []).map(mapReviewRowToEntity);
+    const entries = Object.entries(criteria);
+    const filteredRows = entries.length === 0
+      ? rows
+      : rows.filter((row) => entries.every(([key, value]) => {
+        if (key === 'created_by_id' || key === 'user_id') {
+          return row.created_by_id === value;
+        }
 
-    return (data || []).map(mapReviewRowToEntity);
+        return row[key] === value;
+      }));
+
+    const limitedRows = Number.isFinite(limit) ? filteredRows.slice(0, limit) : filteredRows;
+    await migrateReviewRowsToCanonicalRatings(limitedRows);
+
+    return limitedRows;
   },
   get: async (id) => {
     const { data, error } = await supabase

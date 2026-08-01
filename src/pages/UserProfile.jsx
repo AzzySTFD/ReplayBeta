@@ -59,17 +59,33 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [viewerRatingDisplayPreference, setViewerRatingDisplayPreference] = useState("100");
 
+  const resolveProfile = useCallback(async (value) => {
+    if (!value) return null;
+
+    const byOwner = await db.entities.Profile.filter({ created_by_id: value });
+    if (byOwner[0]) return byOwner[0];
+
+    const byId = await db.entities.Profile.get(value);
+    if (byId) return byId;
+
+    const byUsername = await db.entities.Profile.filter({ username: value });
+    return byUsername[0] || null;
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
+      const resolvedProfile = await resolveProfile(userId);
+      const resolvedUserId = resolvedProfile?.created_by_id || userId;
+
       const [profiles, userReviews, myFollows, userFolders, followersOfUser, followingByUser] = await Promise.all([
-        db.entities.Profile.filter({ created_by_id: userId }),
-        db.entities.Review.filter({ created_by_id: userId }, "-updated_date", 50),
+        resolvedProfile ? Promise.resolve([resolvedProfile]) : db.entities.Profile.filter({ created_by_id: resolvedUserId }),
+        db.entities.Review.filter({ created_by_id: resolvedUserId }, "-updated_date", 50),
         currentUser
-          ? db.entities.Follow.filter({ created_by_id: currentUser.id, following_id: userId })
+          ? db.entities.Follow.filter({ created_by_id: currentUser.id, following_id: resolvedUserId })
           : Promise.resolve([]),
-        db.entities.Folder.filter({ created_by_id: userId }),
-        db.entities.Follow.filter({ following_id: userId }),
-        db.entities.Follow.filter({ created_by_id: userId }),
+        db.entities.Folder.filter({ created_by_id: resolvedUserId }),
+        db.entities.Follow.filter({ following_id: resolvedUserId }),
+        db.entities.Follow.filter({ created_by_id: resolvedUserId }),
       ]);
 
       const followerIds = [...new Set((followersOfUser || []).map((row) => row.created_by_id).filter(Boolean))];
@@ -107,8 +123,9 @@ export default function UserProfile() {
       });
 
       const allReviews = await db.entities.Review.list("-updated_date", 200);
-      const profile = profiles[0] || null;
+      const profile = profiles[0] || resolvedProfile || null;
       const fallbackReviews = allReviews.filter((review) => {
+        if (review.created_by_id === resolvedUserId) return true;
         if (review.created_by_id === userId) return true;
         if (profile && review.created_by_id === profile.created_by_id) return true;
         if (profile && review.created_by_id === profile.id) return true;
