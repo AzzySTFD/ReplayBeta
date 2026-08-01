@@ -1,18 +1,28 @@
 const QUARTER_STEP = 0.25;
 const HALF_STEP = 0.5;
 const TEN_POINT_MAX = 10;
-const HUNDRED_POINT_MAX = 100;
 
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
 
-export const isAdvancedReviewRatingValue = (value) => Number(value || 0) > TEN_POINT_MAX;
+export const normalizeReviewRatingValue = (value) => {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return 0;
+  if (numericValue > TEN_POINT_MAX) {
+    return roundToQuarterStep(numericValue / TEN_POINT_MAX);
+  }
+  return numericValue;
+};
 
-export const getReviewRatingScale = (value, advanced = isAdvancedReviewRatingValue(value)) => (
-  advanced ? HUNDRED_POINT_MAX : TEN_POINT_MAX
-);
+export const isAdvancedReviewRatingValue = (value) => {
+  const numericValue = normalizeReviewRatingValue(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) return false;
+  return Math.abs(numericValue - roundToHalfStep(numericValue)) > 0.000001;
+};
+
+export const getReviewRatingScale = () => TEN_POINT_MAX;
 
 export const formatReviewRatingValue = (value, advanced = isAdvancedReviewRatingValue(value)) => {
-  const numericValue = Number(value || 0);
+  const numericValue = normalizeReviewRatingValue(value);
   if (!Number.isFinite(numericValue) || numericValue <= 0) return "-";
   return advanced ? numericValue.toFixed(2) : numericValue.toFixed(1);
 };
@@ -30,7 +40,7 @@ export const roundToQuarterStep = (value) => {
 };
 
 export const formatAdvancedReviewInput = (value) => {
-  const numericValue = roundToQuarterStep(value);
+  const numericValue = roundToQuarterStep(normalizeReviewRatingValue(value));
   if (!Number.isFinite(numericValue) || numericValue <= 0) return "";
   return numericValue.toFixed(2);
 };
@@ -38,16 +48,16 @@ export const formatAdvancedReviewInput = (value) => {
 export const validateAdvancedReviewInput = (value) => {
   const trimmed = String(value || "").trim();
   if (!trimmed) {
-    return { value: null, error: "Enter a rating between 0 and 100." };
+    return { value: null, error: "Enter a rating between 1 and 10." };
   }
 
-  if (!/^\d{1,3}(\.\d{0,2})?$/.test(trimmed)) {
+  if (!/^\d{1,2}(\.\d{0,2})?$/.test(trimmed)) {
     return { value: null, error: "Use numbers only, with up to 2 decimal places." };
   }
 
   const parsed = Number(trimmed);
-  if (!isFiniteNumber(parsed) || parsed < 0 || parsed > HUNDRED_POINT_MAX) {
-    return { value: null, error: "Advanced Review must be between 0 and 100." };
+  if (!isFiniteNumber(parsed) || parsed < 1 || parsed > TEN_POINT_MAX) {
+    return { value: null, error: "Advanced Review must be between 1 and 10." };
   }
 
   const rounded = roundToQuarterStep(parsed);

@@ -524,7 +524,7 @@ export default function UserProfile() {
                       <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
                       <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
                         <span className="rounded bg-white/10 px-1.5 py-0.5">{formatReviewRatingValue(review.album_rating, advanced)}</span>
-                        <span>{advanced ? "/100" : "/10"}</span>
+                        <span>/10</span>
                         {review.release_year && <span>{review.release_year}</span>}
                         <span>{review.tracks?.length || 0} tracks</span>
                       </div>

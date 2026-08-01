@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import TrackList from "@/components/TrackList";
 import RatingScale from "@/components/RatingScale";
 import { useToast } from "@/components/ui/use-toast";
-import { formatAdvancedReviewInput, formatReviewRatingValue, getReviewRatingScale, roundToHalfStep, roundToQuarterStep, validateAdvancedReviewInput } from "@/lib/reviewRatings";
+import { formatAdvancedReviewInput, formatReviewRatingValue, getReviewRatingScale, normalizeReviewRatingValue, roundToHalfStep, roundToQuarterStep, validateAdvancedReviewInput } from "@/lib/reviewRatings";
 import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X, Shuffle, Clock3, Disc3, ListMusic, Building2, Tag } from "lucide-react";
 
 const formatRuntime = (runtimeMs) => {
@@ -179,9 +179,11 @@ export default function Review() {
           });
           setTracks(review.tracks || []);
           setUseManualRating(review.use_manual_rating || false);
-          setManualRating(review.manual_rating || 0);
-          setUseAdvancedRating(Boolean(review.use_manual_rating && Number(review.manual_rating || 0) > 10));
-          setAdvancedRatingInput(Boolean(review.use_manual_rating && Number(review.manual_rating || 0) > 10) ? formatAdvancedReviewInput(review.manual_rating) : "");
+          const savedManualRating = normalizeReviewRatingValue(review.manual_rating || 0);
+          const hasQuarterPrecision = Math.abs(savedManualRating - roundToHalfStep(savedManualRating)) > 0.000001;
+          setUseAdvancedRating(Boolean(review.use_manual_rating && hasQuarterPrecision));
+          setAdvancedRatingInput(Boolean(review.use_manual_rating && hasQuarterPrecision) ? formatAdvancedReviewInput(savedManualRating) : "");
+          setManualRating(savedManualRating);
           setNotes(review.notes || "");
           setReviewerName(review.username || "");
           setSelectedFolderId(review.folder_id || "");
@@ -282,7 +284,7 @@ export default function Review() {
       return;
     }
 
-    const nextManualRating = roundToHalfStep(Math.min(10, Math.max(0, isAdvancedReview ? manualRating / 10 : (manualRating || autoRating))));
+    const nextManualRating = roundToHalfStep(Math.min(10, Math.max(0, manualRating || autoRating)));
     setUseAdvancedRating(false);
     setAdvancedRatingInput("");
     setUseManualRating(true);
@@ -299,18 +301,18 @@ export default function Review() {
     }
 
     const seedRating = useManualRating && !useAdvancedRating
-      ? roundToQuarterStep(manualRating * 10)
-      : roundToQuarterStep(autoRating * 10);
+      ? roundToQuarterStep(manualRating)
+      : roundToQuarterStep(Math.max(autoRating, 1));
 
     setUseManualRating(true);
     setUseAdvancedRating(true);
-    setManualRating(seedRating);
-    setAdvancedRatingInput(formatAdvancedReviewInput(seedRating));
+    setManualRating(Math.min(10, Math.max(1, seedRating)));
+    setAdvancedRatingInput(formatAdvancedReviewInput(Math.min(10, Math.max(1, seedRating))));
   };
 
   const handleAdvancedRatingChange = (event) => {
     const nextValue = event.target.value;
-    if (!/^\d{0,3}(\.\d{0,2})?$/.test(nextValue)) return;
+    if (!/^\d{0,2}(\.\d{0,2})?$/.test(nextValue)) return;
 
     setAdvancedRatingInput(nextValue);
     if (!nextValue.trim()) {
@@ -729,7 +731,7 @@ export default function Review() {
             )}
             {isAdvancedReview && (
               <p className="text-white/30 text-xs mt-1">
-                Advanced Review uses typed scores from 0 to 100 in .25 increments.
+                Advanced Review uses typed scores from 1 to 10 in .25 increments.
               </p>
             )}
           </div>
@@ -778,18 +780,18 @@ export default function Review() {
                           value={advancedRatingInput}
                           onChange={handleAdvancedRatingChange}
                           onBlur={handleAdvancedRatingBlur}
-                          placeholder="00.00"
+                          placeholder="0.00"
                           className="w-full min-w-0 bg-transparent font-mono text-base font-semibold tracking-[0.08em] text-white outline-none placeholder:text-white/20 sm:text-lg"
                         />
                         <span className="ml-2 whitespace-nowrap rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">
-                          /100
+                          /10
                         </span>
                       </div>
                       <div className="rounded-xl border border-stone-400/20 bg-stone-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-200">
                         Type
                       </div>
                     </div>
-                    <p className="mt-2 pl-1 text-[11px] text-white/28">Quarter-step only: 90.25, 90.50, 90.75.</p>
+                    <p className="mt-2 pl-1 text-[11px] text-white/28">Quarter-step only: 8.25, 8.50, 8.75.</p>
                     {advancedRatingInput.trim() && advancedRatingValidation.error && (
                       <p className="mt-2 pl-1 text-xs text-red-300">{advancedRatingValidation.error}</p>
                     )}

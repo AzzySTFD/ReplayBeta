@@ -33,7 +33,7 @@ export default function Home() {
     const advanced = isAdvancedReviewRatingValue(rating);
     return {
       value: formatReviewRatingValue(rating, advanced),
-      scale: advanced ? 100 : 10,
+      scale: 10,
     };
   };
 
