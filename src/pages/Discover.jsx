@@ -19,10 +19,13 @@ export default function Discover() {
 
   const loadData = useCallback(async () => {
     try {
-      const [profiles, myFollows] = await Promise.all([
+      const [profilesResult, myFollowsResult] = await Promise.allSettled([
         db.entities.Profile.list(),
         user ? db.entities.Follow.filter({ created_by_id: user.id }) : Promise.resolve([]),
       ]);
+
+      const profiles = profilesResult.status === "fulfilled" ? profilesResult.value : [];
+      const myFollows = myFollowsResult.status === "fulfilled" ? myFollowsResult.value : [];
       setAllProfiles(profiles);
       setFollows(myFollows);
     } catch (e) {
