@@ -30,6 +30,7 @@ test("conversion and descriptions keep ratings in range", () => {
   assert.equal(convertDisplayRatingToStoredValue(9.43, "10"), 94.3);
   assert.equal(convertDisplayRatingToStoredValue("94.25", "100"), 94.25);
   assert.equal(getRatingDescription(94), "Excellent");
+  assert.equal(getRatingDescription(94.67), "Excellent");
   const tracks = normalizeTrackRatings([{ rating: 8 }, { rating: 91 }]);
   assert.equal(tracks[0].rating, 80);
   assert.equal(tracks[1].rating, 91);

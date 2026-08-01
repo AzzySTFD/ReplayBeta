@@ -15,5 +15,18 @@ export const RATING_DESCRIPTIONS = [
 
 export const getRatingDescription = (value) => {
   const numericValue = Number.isFinite(Number(value)) ? Number(value) : 0;
-  return RATING_DESCRIPTIONS.find((entry) => numericValue >= entry.min && numericValue <= entry.max)?.label || "Unlistenable";
+  const clamped = Math.min(100, Math.max(0, numericValue));
+
+  if (clamped === 100) return "Masterpiece";
+  if (clamped >= 95) return "Amazing";
+  if (clamped >= 90) return "Excellent";
+  if (clamped >= 80) return "Great";
+  if (clamped >= 70) return "Good";
+  if (clamped >= 60) return "Decent";
+  if (clamped >= 50) return "Average";
+  if (clamped >= 40) return "Mixed";
+  if (clamped >= 30) return "Poor";
+  if (clamped >= 20) return "Bad";
+  if (clamped >= 10) return "Awful";
+  return "Unlistenable";
 };

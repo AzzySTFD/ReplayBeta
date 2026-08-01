@@ -730,8 +730,7 @@ const migrateReviewRowsToCanonicalRatings = async (rows = []) => {
   }
 };
 
-const sanitizeReviewPayload = (payload = {}, userId) => stripUndefined({
-  created_by_id: userId,
+const sanitizeReviewPayload = (payload = {}) => stripUndefined({
   username: payload.username !== undefined ? String(payload.username || '') : undefined,
   spotify_album_id: payload.spotify_album_id !== undefined ? String(payload.spotify_album_id || '') : undefined,
   spotify_artist_id: payload.spotify_artist_id !== undefined ? String(payload.spotify_artist_id || '') : undefined,
@@ -818,22 +817,39 @@ const createReviewCollection = () => ({
       throw new Error('Authenticated user is required to create a review');
     }
 
-    const reviewRow = sanitizeReviewPayload(payload, userId);
-    const { data, error } = await supabase
-      .from('reviews')
-      .insert(reviewRow)
-      .select('*')
-      .single();
+    const baseReviewRow = sanitizeReviewPayload(payload);
+    const reviewInsertAttempts = [
+      baseReviewRow,
+      { ...baseReviewRow, created_by_id: userId },
+      { ...baseReviewRow, user_id: userId },
+    ];
 
-    if (error) {
-      throw error;
+    let createdRow = null;
+    let lastError = null;
+
+    for (const reviewRow of reviewInsertAttempts) {
+      const { data, error } = await supabase
+        .from('reviews')
+        .insert(reviewRow)
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        createdRow = data;
+        break;
+      }
+
+      lastError = error || new Error('Review insert failed');
     }
 
-    return mapReviewRowToEntity(data);
+    if (!createdRow) {
+      throw lastError;
+    }
+
+    return mapReviewRowToEntity(createdRow);
   },
   update: async (id, payload = {}) => {
-    const reviewRow = sanitizeReviewPayload(payload, payload.created_by_id || payload.user_id);
-    delete reviewRow.created_by_id;
+    const reviewRow = sanitizeReviewPayload(payload);
 
     const { data, error } = await supabase
       .from('reviews')
