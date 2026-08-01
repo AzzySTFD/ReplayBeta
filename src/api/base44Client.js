@@ -109,7 +109,7 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
 
       const folderRow = {
         id: row.id,
-        created_by_id: currentUserId,
+        user_id: currentUserId,
         name: row.name || '',
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -418,7 +418,7 @@ const mapFolderRowToEntity = (row) => {
 
   return {
     id: row.id,
-    created_by_id: row.created_by_id || row.user_id,
+    created_by_id: row.user_id || row.created_by_id,
     name: row.name || '',
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -448,7 +448,7 @@ const createFolderCollection = () => ({
 
     for (const [key, value] of Object.entries(criteria)) {
       if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('created_by_id', value);
+        query = query.eq('user_id', value);
       } else {
         query = query.eq(key, value);
       }
@@ -488,7 +488,7 @@ const createFolderCollection = () => ({
     }
 
     const folderRow = {
-      created_by_id: userId,
+      user_id: userId,
       name: String(payload.name || '').trim(),
     };
 

@@ -481,7 +481,7 @@ export default function Review() {
       }).catch(() => {});
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "Save failed", description: "Could not save your review." });
+      toast({ variant: "destructive", title: "Save failed", description: e?.message || "Could not save your review." });
     } finally {
       setSaving(false);
     }
