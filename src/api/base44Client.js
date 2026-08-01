@@ -749,6 +749,25 @@ const sanitizeReviewPayload = (payload = {}) => stripUndefined({
   folder_name: payload.folder_name !== undefined ? String(payload.folder_name || '') : undefined,
 });
 
+const isAlbumRatingRangeConstraintError = (error) => {
+  const message = String(error?.message || '').toLowerCase();
+  const details = String(error?.details || '').toLowerCase();
+  return message.includes('reviews_album_rating_range')
+    || message.includes('album_rating_range')
+    || details.includes('album_rating_range');
+};
+
+const toTenPointStorageValue = (value) => {
+  const normalized = normalizeLegacyRatingValue(value);
+  return Math.round((normalized / 10) * 1000) / 1000;
+};
+
+const toTenPointCompatibleReviewRow = (row = {}) => ({
+  ...row,
+  album_rating: row.album_rating !== undefined ? toTenPointStorageValue(row.album_rating) : row.album_rating,
+  manual_rating: row.manual_rating !== undefined ? toTenPointStorageValue(row.manual_rating) : row.manual_rating,
+});
+
 const createReviewCollection = () => ({
   list: async (orderBy, limit) => {
     const { column, ascending } = toSupabaseOrder(orderBy, 'updated_at');
@@ -839,6 +858,23 @@ const createReviewCollection = () => ({
         break;
       }
 
+      if (error && isAlbumRatingRangeConstraintError(error)) {
+        const tenPointRow = toTenPointCompatibleReviewRow(reviewRow);
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('reviews')
+          .insert(tenPointRow)
+          .select('*')
+          .maybeSingle();
+
+        if (!fallbackError && fallbackData) {
+          createdRow = fallbackData;
+          break;
+        }
+
+        lastError = fallbackError || error;
+        continue;
+      }
+
       lastError = error || new Error('Review insert failed');
     }
 
@@ -857,6 +893,22 @@ const createReviewCollection = () => ({
       .eq('id', id)
       .select('*')
       .single();
+
+    if (error && isAlbumRatingRangeConstraintError(error)) {
+      const tenPointRow = toTenPointCompatibleReviewRow(reviewRow);
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('reviews')
+        .update(tenPointRow)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (fallbackError) {
+        throw fallbackError;
+      }
+
+      return mapReviewRowToEntity(fallbackData);
+    }
 
     if (error) {
       throw error;
