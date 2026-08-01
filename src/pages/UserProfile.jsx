@@ -200,9 +200,11 @@ export default function UserProfile() {
   const sectionOrder = validSectionOrder.length
     ? [...validSectionOrder, ...DEFAULT_SECTION_ORDER.filter((section) => !validSectionOrder.includes(section))]
     : DEFAULT_SECTION_ORDER;
-  const folderScopedReviews = selectedFolderId
-    ? reviews.filter((review) => review.folder_id === selectedFolderId)
-    : reviews.filter((review) => review.folder_id || review.folder_name);
+  const folderScopedReviews = selectedFolderId === ""
+    ? reviews
+    : selectedFolderId === "unfiled"
+      ? reviews.filter((review) => !review.folder_id && !review.folder_name)
+      : reviews.filter((review) => review.folder_id === selectedFolderId);
   const availableYears = useMemo(() => {
     const years = new Set();
     for (const review of folderScopedReviews) {
@@ -287,20 +289,18 @@ export default function UserProfile() {
     }
   };
 
+  const displayProfile = profile || {
+    username: String(userId || "user").slice(0, 24),
+    display_name: String(userId || "User").slice(0, 24),
+    bio: "",
+    avatar_url: "",
+    social_links: {},
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="w-8 h-8 text-stone-400 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <div className="text-center py-20 text-white/40">
-        <Disc className="w-12 h-12 mx-auto mb-3 opacity-30" />
-        <p>User not found.</p>
-        <button onClick={() => navigate("/discover")} className="mt-4 text-stone-400 text-sm">Back to Discover</button>
       </div>
     );
   }
@@ -321,14 +321,14 @@ export default function UserProfile() {
             <div className="sm:hidden">
               <img
                 src={mobileBanner || desktopBanner}
-                alt={`${profile.username} mobile banner`}
+                alt={`${displayProfile.username} mobile banner`}
                 className="h-40 w-full object-cover"
               />
             </div>
             <div className="hidden sm:block">
               <img
                 src={desktopBanner || mobileBanner}
-                alt={`${profile.username} banner`}
+                alt={`${displayProfile.username} banner`}
                 className="h-52 w-full object-cover"
               />
             </div>
@@ -337,16 +337,16 @@ export default function UserProfile() {
 
         <div className={`flex items-start gap-4 ${desktopBanner || mobileBanner ? "-mt-10 sm:-mt-12 px-3 sm:px-4 relative z-10" : "mt-0"}`}>
           <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-stone-500 to-slate-600 flex items-center justify-center text-2xl sm:text-3xl font-bold flex-shrink-0 overflow-hidden border-4 border-zinc-950 shadow-lg">
-          {profile.avatar_url ? (
-            <img src={profile.avatar_url} alt={profile.username} className="h-full w-full object-cover" />
+          {displayProfile.avatar_url ? (
+            <img src={displayProfile.avatar_url} alt={displayProfile.username} className="h-full w-full object-cover" />
           ) : (
-            profile.username?.[0]?.toUpperCase() || "U"
+            displayProfile.username?.[0]?.toUpperCase() || "U"
           )}
         </div>
         <div className={`flex-1 min-w-0 ${desktopBanner || mobileBanner ? "pt-5 sm:pt-6" : ""}`}>
-          <h1 className="text-xl sm:text-2xl font-bold">{profile.display_name || profile.username}</h1>
-          <p className="mt-1 text-sm italic text-white/50">@{profile.username}</p>
-          {profile.bio && <p className="text-white/50 text-sm mt-2">{profile.bio}</p>}
+          <h1 className="text-xl sm:text-2xl font-bold">{displayProfile.display_name || displayProfile.username}</h1>
+          <p className="mt-1 text-sm italic text-white/50">@{displayProfile.username}</p>
+          {displayProfile.bio && <p className="text-white/50 text-sm mt-2">{displayProfile.bio}</p>}
           {!isOwn && (
             <p className="text-xs uppercase tracking-[0.2em] text-stone-400/70 mt-2">Public profile</p>
           )}

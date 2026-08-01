@@ -9,7 +9,8 @@ const isFiniteNumber = (value) => Number.isFinite(Number(value));
 export const clampRatingValue = (value) => {
   const numericValue = Number(value);
   if (!isFiniteNumber(numericValue)) return 0;
-  return Math.min(RATING_MAX, Math.max(RATING_MIN, Math.round(numericValue)));
+  const clampedValue = Math.min(RATING_MAX, Math.max(RATING_MIN, numericValue));
+  return Math.round(clampedValue * 100) / 100;
 };
 
 export const normalizeLegacyRatingValue = (value) => {
@@ -47,7 +48,8 @@ export const convertRatingForDisplay = (value, preference) => {
   const normalizedPreference = normalizeRatingDisplayPreference(preference);
 
   if (normalizedPreference === "10") {
-    return (normalizedValue / 10).toFixed(1);
+    const displayValue = normalizedValue / 10;
+    return Number(displayValue.toFixed(2)).toString();
   }
 
   if (normalizedPreference === "stars") {

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import TrackList from "@/components/TrackList";
 import RatingInput from "@/components/RatingInput";
 import { useToast } from "@/components/ui/use-toast";
-import { formatRatingDisplay, getRatingDisplayPreference, normalizeLegacyRatingValue } from "@/utils/ratings";
+import { clampRatingValue, formatRatingDisplay, getRatingDisplayPreference } from "@/utils/ratings";
 import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X, Shuffle, Clock3, Disc3, ListMusic, Building2, Tag } from "lucide-react";
 
 const formatRuntime = (runtimeMs) => {
@@ -177,7 +177,7 @@ export default function Review() {
           });
           setTracks(review.tracks || []);
           setUseManualRating(review.use_manual_rating || false);
-          setManualRating(normalizeLegacyRatingValue(review.manual_rating || 0));
+          setManualRating(clampRatingValue(review.manual_rating || 0));
           setNotes(review.notes || "");
           setReviewerName(review.username || "");
           setSelectedFolderId(review.folder_id || "");
@@ -264,7 +264,7 @@ export default function Review() {
     return rated.reduce((sum, t) => sum + t.rating, 0) / rated.length;
   }, [tracks]);
 
-  const displayRating = useManualRating ? manualRating : Math.round(autoRating);
+  const displayRating = useManualRating ? manualRating : autoRating;
   const formattedDisplayRating = formatRatingDisplay(displayRating, ratingDisplayPreference);
   const ratedCount = tracks.filter((t) => t.rating > 0).length;
 
@@ -276,7 +276,7 @@ export default function Review() {
     }
 
     setUseManualRating(true);
-    setManualRating(Math.round(Math.min(100, Math.max(0, autoRating))));
+    setManualRating(clampRatingValue(autoRating));
   };
 
   const handleReaction = async (emoji) => {
@@ -454,9 +454,9 @@ export default function Review() {
         release_year: album.release_year || "",
         username: myUsername,
         tracks,
-        album_rating: Math.round(displayRating),
+        album_rating: clampRatingValue(displayRating),
         use_manual_rating: useManualRating,
-        manual_rating: useManualRating ? Math.round(manualRating) : 0,
+        manual_rating: useManualRating ? clampRatingValue(manualRating) : 0,
         notes,
         reactions,
         comments,

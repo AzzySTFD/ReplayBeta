@@ -1,20 +1,41 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import RatingStars from "@/components/RatingStars";
-import { formatRatingDescription } from "@/utils/ratings";
+import { clampRatingValue, formatRatingDescription } from "@/utils/ratings";
 
 export default function RatingInput({ value = 0, onChange, readOnly = false, className = "" }) {
-  const normalizedValue = Number.isFinite(Number(value)) ? Math.min(Math.max(Math.round(Number(value)), 0), 100) : 0;
+  const normalizedValue = clampRatingValue(value);
+  const [draftValue, setDraftValue] = useState(normalizedValue > 0 ? String(normalizedValue) : "");
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftValue(normalizedValue > 0 ? String(normalizedValue) : "");
+    }
+  }, [normalizedValue, isEditing]);
 
   const handleChange = (event) => {
     if (readOnly) return;
-    const nextValue = Number(event.target.value);
-    if (!Number.isFinite(nextValue)) {
+    const nextValue = event.target.value;
+    setDraftValue(nextValue);
+
+    if (nextValue === "") {
       onChange(0);
       return;
     }
 
-    onChange(Math.min(100, Math.max(0, Math.round(nextValue))));
+    const parsedValue = Number(nextValue);
+    if (!Number.isFinite(parsedValue)) {
+      return;
+    }
+
+    onChange(clampRatingValue(parsedValue));
+  };
+
+  const handleBlur = () => {
+    if (readOnly) return;
+    setIsEditing(false);
+    setDraftValue(normalizedValue > 0 ? String(normalizedValue) : "");
   };
 
   return (
@@ -23,15 +44,17 @@ export default function RatingInput({ value = 0, onChange, readOnly = false, cla
         <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/35">Rate Album</p>
         <label className="mt-3 flex w-full items-center justify-center">
           <input
-            type="number"
+            type="text"
             min="0"
             max="100"
-            step="1"
-            value={normalizedValue || ""}
+            step="0.01"
+            value={draftValue}
             onChange={handleChange}
+            onFocus={() => setIsEditing(true)}
+            onBlur={handleBlur}
             readOnly={readOnly}
             className="w-full border-0 bg-transparent text-center font-mono text-6xl font-bold tracking-tight text-white outline-none placeholder:text-white/10 sm:text-7xl"
-            inputMode="numeric"
+            inputMode="decimal"
           />
         </label>
         <p className="mt-1 text-sm font-medium text-stone-300">{formatRatingDescription(normalizedValue)}</p>
