@@ -21,6 +21,7 @@ import {
 import { Loader2, Save, AtSign, Trash2, Upload, FolderPlus, User, ArrowUp, ArrowDown, Monitor, Smartphone } from "lucide-react";
 import DiscordConnect from "@/components/DiscordConnect";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
+import { normalizeRatingDisplayPreference } from "@/utils/ratings";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -51,6 +52,7 @@ export default function ProfilePage() {
   const [folders, setFolders] = useState([]);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [ratingDisplayPreference, setRatingDisplayPreference] = useState("100");
 
   useEffect(() => {
     const load = async () => {
@@ -70,6 +72,7 @@ export default function ProfilePage() {
           setKick(profiles[0].social_links?.kick || "");
           setWebsite(profiles[0].social_links?.website || "");
           const customization = profiles[0].social_links?.profile_customization || {};
+          setRatingDisplayPreference(normalizeRatingDisplayPreference(customization.rating_display_preference));
           setDesktopBannerUrl(customization.banner_desktop || "");
           setMobileBannerUrl(customization.banner_mobile || "");
           const incomingOrder = Array.isArray(customization.section_order) ? customization.section_order : [];
@@ -215,6 +218,7 @@ export default function ProfilePage() {
           banner_desktop: desktopBannerUrl.trim(),
           banner_mobile: mobileBannerUrl.trim(),
           section_order: sectionOrder,
+          rating_display_preference: ratingDisplayPreference,
         },
       };
 
@@ -529,6 +533,22 @@ export default function ProfilePage() {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-white/80">Preferred rating display</h3>
+            <p className="text-sm text-white/50">This only changes how ratings are shown. Stored ratings stay on a 0–100 scale.</p>
+          </div>
+          <select
+            value={ratingDisplayPreference}
+            onChange={(e) => setRatingDisplayPreference(normalizeRatingDisplayPreference(e.target.value))}
+            className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none"
+          >
+            <option value="100" className="bg-zinc-900">100 Point</option>
+            <option value="10" className="bg-zinc-900">10 Point</option>
+            <option value="stars" className="bg-zinc-900">5 Star</option>
+          </select>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

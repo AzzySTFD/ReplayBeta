@@ -9,7 +9,7 @@ import { Disc, Star, ChevronRight, Loader2, Users } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import PullToRefresh from "@/components/PullToRefresh";
 import { db } from "@/api/base44Client";
-import { formatReviewRatingValue, isAdvancedReviewRatingValue } from "@/lib/reviewRatings";
+import { formatRatingDisplay, getRatingDisplayPreference } from "@/utils/ratings";
 
 export default function Home() {
   const { user } = useAuth();
@@ -28,14 +28,7 @@ export default function Home() {
   const [loadingFeatured, setLoadingFeatured] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
-
-  const renderReviewRating = (rating) => {
-    const advanced = isAdvancedReviewRatingValue(rating);
-    return {
-      value: formatReviewRatingValue(rating, advanced),
-      scale: 10,
-    };
-  };
+  const [ratingDisplayPreference, setRatingDisplayPreference] = useState("100");
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -49,6 +42,7 @@ export default function Home() {
 
       const allReviews = await db.entities.Review.list("-updated_date", 200);
       const profile = myProfile[0] || null;
+      setRatingDisplayPreference(getRatingDisplayPreference(profile));
       const fallbackReviews = allReviews.filter((review) => {
         if (review.created_by_id === user.id) return true;
         if (profile && review.created_by_id === profile.created_by_id) return true;
@@ -137,6 +131,8 @@ export default function Home() {
   const handleAlbumClick = (album) => {
     navigate("/review/new", { state: { album } });
   };
+
+  const renderRating = (rating) => formatRatingDisplay(rating, ratingDisplayPreference);
 
   const visibleReviews = useMemo(() => {
     if (!selectedFolderId) return reviews;
@@ -276,9 +272,9 @@ export default function Home() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {visibleReviews.map((review) => (
-                    (() => {
-                      const rating = renderReviewRating(review.album_rating);
-                      return (
+                      (() => {
+                        const rating = renderRating(review.album_rating);
+                        return (
                     <div key={review.id} className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 hover:bg-white/[0.05] transition-all">
                       <button onClick={() => navigate(`/review/${review.id}`)} className="flex items-center gap-4 flex-1 min-w-0 text-left">
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
@@ -299,10 +295,8 @@ export default function Home() {
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-stone-400 text-sm font-bold font-mono">
-                              {rating.value}
-                            </span>
-                            <span className="text-white/30 text-xs">/ {rating.scale}</span>
+                            <span className="text-stone-400 text-sm font-bold font-mono">{rating.value}</span>
+                            {rating.suffix && <span className="text-white/30 text-xs">{rating.suffix}</span>}
                           </div>
                         </div>
                       </button>
@@ -348,7 +342,7 @@ export default function Home() {
               <div className="space-y-3">
                 {feed.map((review) => (
                   (() => {
-                    const rating = renderReviewRating(review.album_rating);
+                    const rating = renderRating(review.album_rating);
                     return (
                   <button
                     key={review.id}
@@ -366,10 +360,8 @@ export default function Home() {
                       <p className="text-white/40 text-xs truncate">{review.artist}</p>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span className="text-stone-400 text-lg font-bold font-mono">
-                        {rating.value}
-                      </span>
-                      <span className="text-white/30 text-xs">/ {rating.scale}</span>
+                      <span className="text-stone-400 text-lg font-bold font-mono">{rating.value}</span>
+                      {rating.suffix && <span className="text-white/30 text-xs">{rating.suffix}</span>}
                     </div>
                     <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-white/40 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                   </button>
@@ -391,7 +383,7 @@ export default function Home() {
                   <Star className="w-8 h-8 text-stone-400/50" />
                 </div>
                 <p className="text-white/50 font-medium mb-1">No featured albums yet</p>
-                <p className="text-white/30 text-sm">Albums with 10+ ratings averaging above 8 will appear here.</p>
+                <p className="text-white/30 text-sm">Albums with 10+ ratings averaging above 80 will appear here.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -409,9 +401,17 @@ export default function Home() {
                       <h3 className="font-semibold text-sm truncate">{album.album_title}</h3>
                       <p className="text-white/40 text-xs truncate">{album.artist}</p>
                       <div className="flex items-center gap-1.5 mt-1">
-                        <Star className="w-3.5 h-3.5 text-stone-400" />
-                        <span className="text-stone-400 text-sm font-bold font-mono">{album.avg_rating}</span>
-                        <span className="text-white/30 text-xs">/ 10 · {album.rating_count} ratings</span>
+                        {(() => {
+                          const rating = formatRatingDisplay(album.avg_rating, ratingDisplayPreference);
+                          return (
+                            <>
+                              {ratingDisplayPreference !== "stars" && <Star className="w-3.5 h-3.5 text-stone-400" />}
+                              <span className="text-stone-400 text-sm font-bold font-mono">{rating.value}</span>
+                              {rating.suffix && <span className="text-white/30 text-xs">{rating.suffix} · {album.rating_count} ratings</span>}
+                              {!rating.suffix && <span className="text-white/30 text-xs">{album.rating_count} ratings</span>}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

@@ -38,8 +38,8 @@ export default function TrackList({ tracks, onRateTrack, readOnly = false }) {
           </div>
           <div className="w-full pl-9 sm:w-auto sm:pl-0 sm:ml-auto rounded-lg border border-white/10 bg-white/[0.04] px-1.5 py-1.5 shadow-sm shadow-black/20">
             <RatingScale
-              value={track.rating || 0}
-              onChange={(val) => onRateTrack(i, val)}
+              value={(track.rating || 0) / 10}
+              onChange={(val) => onRateTrack(i, Math.round(val * 10))}
               size="sm"
               readOnly={readOnly}
             />

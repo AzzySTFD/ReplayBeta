@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { normalizeLegacyRatingValue, normalizeTrackRatings } from '../utils/ratings/RatingUtils.js';
 
 const STORAGE_KEY = 'track-by-track-local-store-v1';
 let memoryStore = {};
@@ -150,10 +151,10 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
         artist: row.artist || '',
         album_art_url: row.album_art_url || '',
         release_year: row.release_year || '',
-        tracks: row.tracks || [],
-        album_rating: row.album_rating ?? 0,
+        tracks: normalizeTrackRatings(row.tracks || []),
+        album_rating: normalizeLegacyRatingValue(row.album_rating ?? 0),
         use_manual_rating: row.use_manual_rating ?? false,
-        manual_rating: row.manual_rating ?? 0,
+        manual_rating: normalizeLegacyRatingValue(row.manual_rating ?? 0),
         notes: row.notes || '',
         reactions: row.reactions || [],
         comments: row.comments || [],
@@ -319,33 +320,6 @@ const createProfileCollection = () => ({
     const { data, error } = await supabase
       .from('profiles')
       .upsert(profileRow, { onConflict: 'user_id' })
-      .select('*')
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return mapProfileRowToEntity(data);
-  },
-  update: async (id, payload = {}) => {
-    const profileRow = {
-      username: payload.username !== undefined ? String(payload.username || '').trim() : undefined,
-      display_name: payload.display_name !== undefined ? String(payload.display_name || '').trim() : undefined,
-      bio: payload.bio !== undefined ? String(payload.bio || '') : undefined,
-      avatar_url: payload.avatar_url !== undefined ? String(payload.avatar_url || '') : undefined,
-      social_links: payload.social_links !== undefined ? payload.social_links || {} : undefined,
-      discord_channel_id: payload.discord_channel_id !== undefined ? String(payload.discord_channel_id || '') : undefined,
-      discord_channel_name: payload.discord_channel_name !== undefined ? String(payload.discord_channel_name || '') : undefined,
-      is_public: payload.is_public !== undefined ? payload.is_public : undefined,
-    };
-
-    Object.keys(profileRow).forEach((key) => profileRow[key] === undefined && delete profileRow[key]);
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(profileRow)
-      .eq('id', id)
       .select('*')
       .single();
 
@@ -665,6 +639,40 @@ const mapReviewRowToEntity = (row) => {
   };
 };
 
+const normalizeReviewRowRatings = (row) => ({
+  ...row,
+  album_rating: normalizeLegacyRatingValue(row?.album_rating ?? 0),
+  manual_rating: normalizeLegacyRatingValue(row?.manual_rating ?? 0),
+  tracks: normalizeTrackRatings(row?.tracks || []),
+});
+
+const migrateReviewRowsToCanonicalRatings = async (rows = []) => {
+  const legacyRows = rows.filter((row) => {
+    const normalizedAlbum = normalizeLegacyRatingValue(row?.album_rating ?? 0);
+    const normalizedManual = normalizeLegacyRatingValue(row?.manual_rating ?? 0);
+    const normalizedTracks = normalizeTrackRatings(row?.tracks || []);
+    const tracksChanged = JSON.stringify(normalizedTracks) !== JSON.stringify(row?.tracks || []);
+    return normalizedAlbum !== (row?.album_rating ?? 0)
+      || normalizedManual !== (row?.manual_rating ?? 0)
+      || tracksChanged;
+  });
+
+  for (const row of legacyRows) {
+    const { error } = await supabase
+      .from('reviews')
+      .update({
+        album_rating: normalizeLegacyRatingValue(row.album_rating ?? 0),
+        manual_rating: normalizeLegacyRatingValue(row.manual_rating ?? 0),
+        tracks: normalizeTrackRatings(row.tracks || []),
+      })
+      .eq('id', row.id);
+
+    if (error) {
+      throw error;
+    }
+  }
+};
+
 const sanitizeReviewPayload = (payload = {}, userId) => stripUndefined({
   user_id: userId,
   username: payload.username !== undefined ? String(payload.username || '') : undefined,
@@ -674,10 +682,10 @@ const sanitizeReviewPayload = (payload = {}, userId) => stripUndefined({
   artist: payload.artist !== undefined ? String(payload.artist || '') : undefined,
   album_art_url: payload.album_art_url !== undefined ? String(payload.album_art_url || '') : undefined,
   release_year: payload.release_year !== undefined ? String(payload.release_year || '') : undefined,
-  tracks: payload.tracks !== undefined ? payload.tracks : undefined,
-  album_rating: payload.album_rating !== undefined ? payload.album_rating : undefined,
+  tracks: payload.tracks !== undefined ? normalizeTrackRatings(payload.tracks) : undefined,
+  album_rating: payload.album_rating !== undefined ? normalizeLegacyRatingValue(payload.album_rating) : undefined,
   use_manual_rating: payload.use_manual_rating !== undefined ? payload.use_manual_rating : undefined,
-  manual_rating: payload.manual_rating !== undefined ? payload.manual_rating : undefined,
+  manual_rating: payload.manual_rating !== undefined ? normalizeLegacyRatingValue(payload.manual_rating) : undefined,
   notes: payload.notes !== undefined ? String(payload.notes || '') : undefined,
   reactions: payload.reactions !== undefined ? payload.reactions : undefined,
   comments: payload.comments !== undefined ? payload.comments : undefined,
@@ -699,6 +707,8 @@ const createReviewCollection = () => ({
     if (error) {
       throw error;
     }
+
+    await migrateReviewRowsToCanonicalRatings(data || []);
 
     return (data || []).map(mapReviewRowToEntity);
   },
@@ -726,6 +736,8 @@ const createReviewCollection = () => ({
       throw error;
     }
 
+    await migrateReviewRowsToCanonicalRatings(data || []);
+
     return (data || []).map(mapReviewRowToEntity);
   },
   get: async (id) => {
@@ -738,6 +750,8 @@ const createReviewCollection = () => ({
     if (error) {
       throw error;
     }
+
+    await migrateReviewRowsToCanonicalRatings(data ? [data] : []);
 
     return mapReviewRowToEntity(data);
   },

@@ -7,7 +7,7 @@ import { Image } from "@/components/ui/image";
 import { useToast } from "@/components/ui/use-toast";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import PullToRefresh from "@/components/PullToRefresh";
-import { formatReviewRatingValue, isAdvancedReviewRatingValue } from "@/lib/reviewRatings";
+import { formatRatingDisplay, getRatingDisplayPreference } from "@/utils/ratings";
 import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen } from "lucide-react";
 
 const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
@@ -57,6 +57,7 @@ export default function UserProfile() {
   const [following, setFollowing] = useState([]);
   const [openConnections, setOpenConnections] = useState("");
   const [loading, setLoading] = useState(true);
+  const [viewerRatingDisplayPreference, setViewerRatingDisplayPreference] = useState("100");
 
   const loadData = useCallback(async () => {
     try {
@@ -116,6 +117,10 @@ export default function UserProfile() {
       const resolvedReviews = userReviews.length > 0 ? userReviews : fallbackReviews;
 
       if (profiles.length > 0) setProfile(profiles[0]);
+      if (currentUser) {
+        const viewerProfiles = await db.entities.Profile.filter({ created_by_id: currentUser.id });
+        setViewerRatingDisplayPreference(getRatingDisplayPreference(viewerProfiles[0] || null));
+      }
       setReviews(resolvedReviews);
       setFolders(userFolders);
       setFollowers(followerProfiles);
@@ -507,7 +512,7 @@ export default function UserProfile() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {visibleReviews.map((review) => (
                   (() => {
-                    const advanced = isAdvancedReviewRatingValue(review.album_rating);
+                    const rating = formatRatingDisplay(review.album_rating, viewerRatingDisplayPreference);
                     return (
                   <button
                     key={review.id}
@@ -523,8 +528,8 @@ export default function UserProfile() {
                       <p className="text-sm font-medium text-white truncate">{review.album_title || "Untitled album"}</p>
                       <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
                       <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
-                        <span className="rounded bg-white/10 px-1.5 py-0.5">{formatReviewRatingValue(review.album_rating, advanced)}</span>
-                        <span>/10</span>
+                        <span className="rounded bg-white/10 px-1.5 py-0.5">{rating.value}</span>
+                        {rating.suffix && <span>{rating.suffix}</span>}
                         {review.release_year && <span>{review.release_year}</span>}
                         <span>{review.tracks?.length || 0} tracks</span>
                       </div>

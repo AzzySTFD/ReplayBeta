@@ -1,5 +1,7 @@
+import { normalizeLegacyRatingValue } from '../../src/utils/ratings/RatingUtils.js';
+
 export const FEATURED_MIN_RATINGS = 10;
-export const FEATURED_MIN_AVG = 8;
+export const FEATURED_MIN_AVG = 80;
 
 export function normalizeAlbumKey(album_title, artist) {
   return `${(album_title || "").trim().toLowerCase()}__${(artist || "").trim().toLowerCase()}`;
@@ -23,8 +25,9 @@ export function computeFeaturedAlbums(reviews) {
     const album = map.get(key);
     const userId = r.created_by_id;
     if (!album.userRatings.has(userId)) {
-      album.userRatings.set(userId, r.album_rating || 0);
-      album.totalRating += r.album_rating || 0;
+      const normalizedRating = normalizeLegacyRatingValue(r.album_rating || 0);
+      album.userRatings.set(userId, normalizedRating);
+      album.totalRating += normalizedRating;
     }
   }
   const featured = [];
@@ -56,8 +59,9 @@ export function isAlbumFeatured(reviews, album_title, artist) {
     const userId = r.created_by_id;
     if (!artUrl && r.album_art_url) artUrl = r.album_art_url;
     if (!userRatings.has(userId)) {
-      userRatings.set(userId, r.album_rating || 0);
-      totalRating += r.album_rating || 0;
+      const normalizedRating = normalizeLegacyRatingValue(r.album_rating || 0);
+      userRatings.set(userId, normalizedRating);
+      totalRating += normalizedRating;
     }
   }
   const count = userRatings.size;
