@@ -85,7 +85,7 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
 
       const profileRow = {
         id: row.id,
-        user_id: currentUserId,
+        created_by_id: currentUserId,
         username: row.username || '',
         display_name: row.display_name || '',
         bio: row.bio || '',
@@ -98,7 +98,7 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
         updated_at: row.updated_at,
       };
 
-      const { error } = await supabase.from('profiles').upsert(profileRow, { onConflict: 'user_id' });
+      const { error } = await supabase.from('profiles').upsert(profileRow, { onConflict: 'created_by_id' });
       if (error) {
         throw error;
       }
@@ -109,7 +109,7 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
 
       const folderRow = {
         id: row.id,
-        user_id: currentUserId,
+        created_by_id: currentUserId,
         name: row.name || '',
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -126,8 +126,8 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
 
       const followRow = {
         id: row.id,
-        user_id: currentUserId,
-        following_user_id: row.following_id || row.following_user_id || null,
+        created_by_id: currentUserId,
+        following_id: row.following_id || row.following_user_id || null,
         following_username: row.following_username || '',
         created_at: row.created_at,
       };
@@ -143,7 +143,7 @@ const migrateLegacyStoreToSupabase = async (currentUserId) => {
 
       const reviewRow = {
         id: row.id,
-        user_id: currentUserId,
+        created_by_id: currentUserId,
         username: row.username || '',
         spotify_album_id: row.spotify_album_id || '',
         spotify_artist_id: row.spotify_artist_id || '',
@@ -231,7 +231,7 @@ const mapProfileRowToEntity = (row) => {
 
   return {
     id: row.id,
-    created_by_id: row.user_id || row.created_by_id,
+    created_by_id: row.created_by_id || row.user_id,
     username: row.username || '',
     display_name: row.display_name || '',
     bio: row.bio || '',
@@ -313,7 +313,7 @@ const createProfileCollection = () => ({
     }
 
     const profileRow = {
-      user_id: userId,
+      created_by_id: userId,
       username: String(payload.username || '').trim(),
       display_name: String(payload.display_name || '').trim(),
       bio: String(payload.bio || ''),
@@ -326,7 +326,7 @@ const createProfileCollection = () => ({
 
     const { data, error } = await supabase
       .from('profiles')
-      .upsert(profileRow, { onConflict: 'user_id' })
+      .upsert(profileRow, { onConflict: 'created_by_id' })
       .select('*')
       .single();
 
@@ -359,13 +359,18 @@ const createProfileCollection = () => ({
       throw error;
     }
 
+    if (error) {
+      throw error;
+    }
+
     if (data) {
       return mapProfileRowToEntity(data);
     }
 
     const { data: fallbackData, error: fallbackError } = await supabase
       .from('profiles')
-      .upsert({ id, user_id: id, ...profileRow }, { onConflict: 'id' })
+      .update(profileRow)
+      .eq('created_by_id', id)
       .select('*')
       .maybeSingle();
 
@@ -413,7 +418,7 @@ const mapFolderRowToEntity = (row) => {
 
   return {
     id: row.id,
-    created_by_id: row.user_id,
+    created_by_id: row.created_by_id || row.user_id,
     name: row.name || '',
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -443,7 +448,7 @@ const createFolderCollection = () => ({
 
     for (const [key, value] of Object.entries(criteria)) {
       if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('user_id', value);
+        query = query.eq('created_by_id', value);
       } else {
         query = query.eq(key, value);
       }
@@ -483,7 +488,7 @@ const createFolderCollection = () => ({
     }
 
     const folderRow = {
-      user_id: userId,
+      created_by_id: userId,
       name: String(payload.name || '').trim(),
     };
 
@@ -536,8 +541,8 @@ const mapFollowRowToEntity = (row) => {
 
   return {
     id: row.id,
-    created_by_id: row.user_id,
-    following_id: row.following_user_id,
+    created_by_id: row.created_by_id || row.user_id,
+    following_id: row.following_id || row.following_user_id,
     following_username: row.following_username || '',
     created_at: row.created_at,
   };
@@ -566,9 +571,9 @@ const createFollowCollection = () => ({
 
     for (const [key, value] of Object.entries(criteria)) {
       if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('user_id', value);
+        query = query.eq('created_by_id', value);
       } else if (key === 'following_id' || key === 'following_user_id') {
-        query = query.eq('following_user_id', value);
+        query = query.eq('following_id', value);
       } else {
         query = query.eq(key, value);
       }
@@ -608,8 +613,8 @@ const createFollowCollection = () => ({
     }
 
     const followRow = {
-      user_id: userId,
-      following_user_id: payload.following_id || payload.following_user_id,
+      created_by_id: userId,
+      following_id: payload.following_id || payload.following_user_id,
       following_username: String(payload.following_username || ''),
     };
 
@@ -628,7 +633,7 @@ const createFollowCollection = () => ({
   update: async (id, payload = {}) => {
     const followRow = stripUndefined({
       following_username: payload.following_username !== undefined ? String(payload.following_username || '') : undefined,
-      following_user_id: payload.following_id !== undefined ? payload.following_id : payload.following_user_id,
+      following_id: payload.following_id !== undefined ? payload.following_id : payload.following_user_id,
     });
 
     const { data, error } = await supabase
@@ -663,7 +668,7 @@ const mapReviewRowToEntity = (row) => {
 
   return {
     id: row.id,
-    created_by_id: row.user_id || row.created_by_id,
+    created_by_id: row.created_by_id || row.user_id,
     username: row.username || '',
     spotify_album_id: row.spotify_album_id || '',
     spotify_artist_id: row.spotify_artist_id || '',
@@ -704,23 +709,29 @@ const migrateReviewRowsToCanonicalRatings = async (rows = []) => {
   });
 
   for (const row of legacyRows) {
-    const { error } = await supabase
-      .from('reviews')
-      .update({
-        album_rating: normalizeLegacyRatingValue(row.album_rating ?? 0),
-        manual_rating: normalizeLegacyRatingValue(row.manual_rating ?? 0),
-        tracks: normalizeTrackRatings(row.tracks || []),
-      })
-      .eq('id', row.id);
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          album_rating: normalizeLegacyRatingValue(row.album_rating ?? 0),
+          manual_rating: normalizeLegacyRatingValue(row.manual_rating ?? 0),
+          tracks: normalizeTrackRatings(row.tracks || []),
+        })
+        .eq('id', row.id);
 
-    if (error) {
-      throw error;
+      if (error) {
+        // Best-effort migration: never block reads when update is not allowed.
+        console.warn('Skipping review rating migration for row', row.id, error.message || error);
+      }
+    } catch (error) {
+      // Best-effort migration: swallow unexpected errors to keep profile and review pages functional.
+      console.warn('Unexpected review rating migration failure for row', row.id, error?.message || error);
     }
   }
 };
 
 const sanitizeReviewPayload = (payload = {}, userId) => stripUndefined({
-  user_id: userId,
+  created_by_id: userId,
   username: payload.username !== undefined ? String(payload.username || '') : undefined,
   spotify_album_id: payload.spotify_album_id !== undefined ? String(payload.spotify_album_id || '') : undefined,
   spotify_artist_id: payload.spotify_artist_id !== undefined ? String(payload.spotify_artist_id || '') : undefined,
@@ -822,7 +833,7 @@ const createReviewCollection = () => ({
   },
   update: async (id, payload = {}) => {
     const reviewRow = sanitizeReviewPayload(payload, payload.created_by_id || payload.user_id);
-    delete reviewRow.user_id;
+    delete reviewRow.created_by_id;
 
     const { data, error } = await supabase
       .from('reviews')
@@ -892,7 +903,7 @@ const findAvailableUsername = async (requestedUsername, currentUserId) => {
     const candidate = index === 0 ? base : `${base}${index + 1}`;
     const { data, error } = await supabase
       .from('profiles')
-      .select('user_id')
+      .select('created_by_id')
       .eq('username', candidate)
       .maybeSingle();
 
@@ -900,7 +911,7 @@ const findAvailableUsername = async (requestedUsername, currentUserId) => {
       throw error;
     }
 
-    if (!data || data.user_id === currentUserId) {
+    if (!data || data.created_by_id === currentUserId) {
       return candidate;
     }
   }
@@ -913,8 +924,8 @@ const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmai
 
   const { data: existingProfile, error: existingError } = await supabase
     .from('profiles')
-    .select('id, user_id, username')
-    .eq('user_id', userId)
+    .select('id, created_by_id, username')
+    .eq('created_by_id', userId)
     .maybeSingle();
 
   if (existingError) {
@@ -930,7 +941,7 @@ const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmai
   const resolvedDisplayName = normalizeUsername(preferredDisplayName) || resolvedUsername;
 
   const profileRow = {
-    user_id: userId,
+    created_by_id: userId,
     username: resolvedUsername,
     display_name: resolvedDisplayName,
     bio: '',
@@ -941,7 +952,7 @@ const ensureProfileForUser = async (userId, preferredUsername = '', fallbackEmai
     is_public: true,
   };
 
-  const { error: upsertError } = await supabase.from('profiles').upsert(profileRow, { onConflict: 'user_id' });
+  const { error: upsertError } = await supabase.from('profiles').upsert(profileRow, { onConflict: 'created_by_id' });
   if (upsertError) {
     throw upsertError;
   }

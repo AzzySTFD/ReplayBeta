@@ -77,7 +77,7 @@ export default function UserProfile() {
       const resolvedProfile = await resolveProfile(userId);
       const resolvedUserId = resolvedProfile?.created_by_id || userId;
 
-      const [profiles, userReviews, myFollows, userFolders, followersOfUser, followingByUser] = await Promise.all([
+      const [profilesResult, userReviewsResult, myFollowsResult, userFoldersResult, followersOfUserResult, followingByUserResult] = await Promise.allSettled([
         resolvedProfile ? Promise.resolve([resolvedProfile]) : db.entities.Profile.filter({ created_by_id: resolvedUserId }),
         db.entities.Review.filter({ created_by_id: resolvedUserId }, "-updated_date", 50),
         currentUser
@@ -87,6 +87,13 @@ export default function UserProfile() {
         db.entities.Follow.filter({ following_id: resolvedUserId }),
         db.entities.Follow.filter({ created_by_id: resolvedUserId }),
       ]);
+
+      const profiles = profilesResult.status === "fulfilled" ? profilesResult.value : [];
+      const userReviews = userReviewsResult.status === "fulfilled" ? userReviewsResult.value : [];
+      const myFollows = myFollowsResult.status === "fulfilled" ? myFollowsResult.value : [];
+      const userFolders = userFoldersResult.status === "fulfilled" ? userFoldersResult.value : [];
+      const followersOfUser = followersOfUserResult.status === "fulfilled" ? followersOfUserResult.value : [];
+      const followingByUser = followingByUserResult.status === "fulfilled" ? followingByUserResult.value : [];
 
       const followerIds = [...new Set((followersOfUser || []).map((row) => row.created_by_id).filter(Boolean))];
       const followerProfiles = await Promise.all(
@@ -122,7 +129,12 @@ export default function UserProfile() {
         };
       });
 
-      const allReviews = await db.entities.Review.list("-updated_date", 200);
+      let allReviews = [];
+      try {
+        allReviews = await db.entities.Review.list("-updated_date", 200);
+      } catch {
+        allReviews = [];
+      }
       const profile = profiles[0] || resolvedProfile || null;
       const fallbackReviews = allReviews.filter((review) => {
         if (review.created_by_id === resolvedUserId) return true;
