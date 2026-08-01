@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { normalizeLegacyRatingValue, normalizeTrackRatings } from '../utils/ratings/RatingUtils.js';
+import { mapFollowRowToEntity, matchesFollowCriteria } from './followRowMapping.js';
 import { mapReviewRowToEntity, normalizeReviewRowRatings } from './reviewRowMapping.js';
+import { getTenPointRetryRow } from './reviewSaveFallback.js';
 
 const STORAGE_KEY = 'track-by-track-local-store-v1';
 let memoryStore = {};
@@ -537,18 +539,6 @@ const createFolderCollection = () => ({
   },
 });
 
-const mapFollowRowToEntity = (row) => {
-  if (!row) return null;
-
-  return {
-    id: row.id,
-    created_by_id: row.created_by_id || row.user_id,
-    following_id: row.following_id || row.following_user_id,
-    following_username: row.following_username || '',
-    created_at: row.created_at,
-  };
-};
-
 const createFollowCollection = () => ({
   list: async (orderBy, limit) => {
     const { column, ascending } = toSupabaseOrder(orderBy);
@@ -568,31 +558,22 @@ const createFollowCollection = () => ({
   },
   filter: async (criteria = {}, orderBy, limit) => {
     const { column, ascending } = toSupabaseOrder(orderBy);
-    let query = supabase.from('follows').select('*');
-
-    for (const [key, value] of Object.entries(criteria)) {
-      if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('created_by_id', value);
-      } else if (key === 'following_id' || key === 'following_user_id') {
-        query = query.eq('following_id', value);
-      } else {
-        query = query.eq(key, value);
-      }
-    }
-
-    query = query.order(column, { ascending });
-
-    if (Number.isFinite(limit)) {
-      query = query.limit(limit);
-    }
-
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('follows')
+      .select('*')
+      .order(column, { ascending });
 
     if (error) {
       throw error;
     }
 
-    return (data || []).map(mapFollowRowToEntity);
+    const rows = (data || []).map(mapFollowRowToEntity);
+    const entries = Object.entries(criteria);
+    const filteredRows = entries.length === 0
+      ? rows
+      : rows.filter((row) => matchesFollowCriteria(row, criteria));
+
+    return Number.isFinite(limit) ? filteredRows.slice(0, limit) : filteredRows;
   },
   get: async (id) => {
     const { data, error } = await supabase
@@ -613,23 +594,38 @@ const createFollowCollection = () => ({
       throw new Error('Authenticated user is required to follow someone');
     }
 
-    const followRow = {
-      created_by_id: userId,
-      following_id: payload.following_id || payload.following_user_id,
-      following_username: String(payload.following_username || ''),
-    };
+    const followingId = payload.following_id || payload.following_user_id;
+    const followingUsername = String(payload.following_username || '');
+    const insertAttempts = [
+      { created_by_id: userId, following_id: followingId, following_username: followingUsername },
+      { user_id: userId, following_user_id: followingId, following_username: followingUsername },
+      { user_id: userId, following_id: followingId, following_username: followingUsername },
+      { created_by_id: userId, following_user_id: followingId, following_username: followingUsername },
+    ];
 
-    const { data, error } = await supabase
-      .from('follows')
-      .insert(followRow)
-      .select('*')
-      .single();
+    let created = null;
+    let lastError = null;
 
-    if (error) {
-      throw error;
+    for (const followRow of insertAttempts) {
+      const { data, error } = await supabase
+        .from('follows')
+        .insert(followRow)
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        created = data;
+        break;
+      }
+
+      lastError = error || new Error('Follow insert failed');
     }
 
-    return mapFollowRowToEntity(data);
+    if (!created) {
+      throw lastError;
+    }
+
+    return mapFollowRowToEntity(created);
   },
   update: async (id, payload = {}) => {
     const followRow = stripUndefined({
@@ -637,18 +633,38 @@ const createFollowCollection = () => ({
       following_id: payload.following_id !== undefined ? payload.following_id : payload.following_user_id,
     });
 
-    const { data, error } = await supabase
-      .from('follows')
-      .update(followRow)
-      .eq('id', id)
-      .select('*')
-      .single();
+    const updateAttempts = [
+      followRow,
+      stripUndefined({
+        following_username: followRow.following_username,
+        following_user_id: followRow.following_id,
+      }),
+    ];
 
-    if (error) {
-      throw error;
+    let updated = null;
+    let lastError = null;
+
+    for (const row of updateAttempts) {
+      const { data, error } = await supabase
+        .from('follows')
+        .update(row)
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        updated = data;
+        break;
+      }
+
+      lastError = error || new Error('Follow update failed');
     }
 
-    return mapFollowRowToEntity(data);
+    if (!updated) {
+      throw lastError;
+    }
+
+    return mapFollowRowToEntity(updated);
   },
   delete: async (id) => {
     const { error } = await supabase
@@ -714,25 +730,6 @@ const sanitizeReviewPayload = (payload = {}) => stripUndefined({
   comments: payload.comments !== undefined ? payload.comments : undefined,
   folder_id: payload.folder_id !== undefined ? payload.folder_id : undefined,
   folder_name: payload.folder_name !== undefined ? String(payload.folder_name || '') : undefined,
-});
-
-const isAlbumRatingRangeConstraintError = (error) => {
-  const message = String(error?.message || '').toLowerCase();
-  const details = String(error?.details || '').toLowerCase();
-  return message.includes('reviews_album_rating_range')
-    || message.includes('album_rating_range')
-    || details.includes('album_rating_range');
-};
-
-const toTenPointStorageValue = (value) => {
-  const normalized = normalizeLegacyRatingValue(value);
-  return Math.round((normalized / 10) * 1000) / 1000;
-};
-
-const toTenPointCompatibleReviewRow = (row = {}) => ({
-  ...row,
-  album_rating: row.album_rating !== undefined ? toTenPointStorageValue(row.album_rating) : row.album_rating,
-  manual_rating: row.manual_rating !== undefined ? toTenPointStorageValue(row.manual_rating) : row.manual_rating,
 });
 
 const createReviewCollection = () => ({
@@ -825,8 +822,8 @@ const createReviewCollection = () => ({
         break;
       }
 
-      if (error && isAlbumRatingRangeConstraintError(error)) {
-        const tenPointRow = toTenPointCompatibleReviewRow(reviewRow);
+      const tenPointRow = getTenPointRetryRow(error, reviewRow);
+      if (tenPointRow) {
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('reviews')
           .insert(tenPointRow)
@@ -861,8 +858,8 @@ const createReviewCollection = () => ({
       .select('*')
       .single();
 
-    if (error && isAlbumRatingRangeConstraintError(error)) {
-      const tenPointRow = toTenPointCompatibleReviewRow(reviewRow);
+    const tenPointRow = getTenPointRetryRow(error, reviewRow);
+    if (tenPointRow) {
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('reviews')
         .update(tenPointRow)

@@ -33,15 +33,23 @@ export default function Home() {
   const loadData = useCallback(async () => {
     if (!user) return;
     try {
-      const [myProfile, myReviews, myFollows, myFolders] = await Promise.all([
+      const [myProfileResult, myReviewsResult, myFollowsResult, myFoldersResult] = await Promise.allSettled([
         db.entities.Profile.filter({ created_by_id: user.id }),
         db.entities.Review.filter({ created_by_id: user.id }, "-updated_date", 50),
         db.entities.Follow.filter({ created_by_id: user.id }),
         db.entities.Folder.filter({ created_by_id: user.id }),
       ]);
 
+      const myProfile = myProfileResult.status === "fulfilled" ? myProfileResult.value : [];
+      const myReviews = myReviewsResult.status === "fulfilled" ? myReviewsResult.value : [];
+      const myFollows = myFollowsResult.status === "fulfilled" ? myFollowsResult.value : [];
+      const myFolders = myFoldersResult.status === "fulfilled" ? myFoldersResult.value : [];
+
       const allReviews = await db.entities.Review.list("-updated_date", 200);
-      const profile = myProfile[0] || null;
+      let profile = myProfile[0] || null;
+      if (!profile) {
+        profile = await db.entities.Profile.get(user.id);
+      }
       setRatingDisplayPreference(getRatingDisplayPreference(profile));
       const fallbackReviews = allReviews.filter((review) => {
         if (review.created_by_id === user.id) return true;
@@ -51,7 +59,7 @@ export default function Home() {
       });
       const resolvedReviews = myReviews.length > 0 ? myReviews : fallbackReviews;
 
-      if (myProfile.length > 0) setProfile(myProfile[0]);
+      setProfile(profile || null);
       setReviews(resolvedReviews);
       setFollows(myFollows);
       setFolders(myFolders);

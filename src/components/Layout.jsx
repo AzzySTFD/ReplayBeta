@@ -4,7 +4,6 @@ import { useAuth } from "@/lib/AuthContext";
 
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { Disc, Compass, User as UserIcon, LogOut, Home as HomeIcon, Bell } from "lucide-react";
-import { db } from "@/api/base44Client";
 import { computeUnreadCount, fetchNotificationItems } from "@/lib/notifications";
 
 const BRAND_NAME = "SpinRate";
@@ -40,20 +39,8 @@ export default function Layout() {
   const location = useLocation();
   useDarkMode();
 
-  const [profile, setProfile] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const profiles = await db.entities.Profile.filter({ created_by_id: user.id });
-        if (profiles.length > 0) setProfile(profiles[0]);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    if (user) loadProfile();
-  }, [user]);
+  const profilePath = user?.id ? `/user/${user.id}` : "/profile";
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +94,7 @@ export default function Layout() {
     { to: "/", label: "Home", icon: HomeIcon },
     { to: "/discover", label: "Discover", icon: Compass },
     { to: "/notifications", label: "Alerts", icon: Bell },
-    { to: "/profile", label: "Profile", icon: UserIcon },
+    { to: profilePath, label: "Profile", icon: UserIcon, isProfile: true },
   ];
 
   return (
@@ -184,7 +171,9 @@ export default function Layout() {
       >
         <div className="flex items-center justify-around h-16 px-2 py-1">
           {navItems.map((item) => {
-            const active = location.pathname === item.to;
+            const active = item.isProfile
+              ? location.pathname === "/profile" || location.pathname.startsWith("/user/")
+              : location.pathname === item.to;
             return (
               <Link
                 key={item.to}

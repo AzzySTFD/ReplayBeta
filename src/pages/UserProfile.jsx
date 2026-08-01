@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import PullToRefresh from "@/components/PullToRefresh";
 import { formatRatingDisplay, getRatingDisplayPreference } from "@/utils/ratings";
-import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen } from "lucide-react";
+import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen, Pencil } from "lucide-react";
 
 const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
 const SOCIAL_KEYS = ["instagram", "twitter", "tiktok", "twitch", "youtube", "kick", "website"];
@@ -378,7 +378,14 @@ export default function UserProfile() {
             </button>
           </div>
         </div>
-        {!isOwn && (
+        {isOwn ? (
+          <button
+            onClick={() => navigate("/profile")}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex-shrink-0 bg-white/5 text-white/80 hover:bg-white/10"
+          >
+            <Pencil className="w-4 h-4" /> Edit Profile
+          </button>
+        ) : (
           <button
             onClick={handleFollowToggle}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex-shrink-0 ${
