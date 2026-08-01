@@ -9,6 +9,7 @@ import { Disc, Star, ChevronRight, Loader2, Users } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import PullToRefresh from "@/components/PullToRefresh";
 import { db } from "@/api/base44Client";
+import { formatReviewRatingValue, isAdvancedReviewRatingValue } from "@/lib/reviewRatings";
 
 export default function Home() {
   const { user } = useAuth();
@@ -27,6 +28,14 @@ export default function Home() {
   const [loadingFeatured, setLoadingFeatured] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
+
+  const renderReviewRating = (rating) => {
+    const advanced = isAdvancedReviewRatingValue(rating);
+    return {
+      value: formatReviewRatingValue(rating, advanced),
+      scale: advanced ? 100 : 10,
+    };
+  };
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -267,6 +276,9 @@ export default function Home() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {visibleReviews.map((review) => (
+                    (() => {
+                      const rating = renderReviewRating(review.album_rating);
+                      return (
                     <div key={review.id} className="group flex items-center gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 hover:bg-white/[0.05] transition-all">
                       <button onClick={() => navigate(`/review/${review.id}`)} className="flex items-center gap-4 flex-1 min-w-0 text-left">
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
@@ -288,9 +300,9 @@ export default function Home() {
                           </div>
                           <div className="flex items-center gap-1.5 mt-1">
                             <span className="text-stone-400 text-sm font-bold font-mono">
-                              {review.album_rating?.toFixed(1) || "—"}
+                              {rating.value}
                             </span>
-                            <span className="text-white/30 text-xs">/ 10</span>
+                            <span className="text-white/30 text-xs">/ {rating.scale}</span>
                           </div>
                         </div>
                       </button>
@@ -309,6 +321,8 @@ export default function Home() {
                         Delete
                       </button>
                     </div>
+                      );
+                    })()
                   ))}
                 </div>
               </div>
@@ -333,6 +347,9 @@ export default function Home() {
             ) : (
               <div className="space-y-3">
                 {feed.map((review) => (
+                  (() => {
+                    const rating = renderReviewRating(review.album_rating);
+                    return (
                   <button
                     key={review.id}
                     onClick={() => navigate(`/review/${review.id}`)}
@@ -350,12 +367,14 @@ export default function Home() {
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <span className="text-stone-400 text-lg font-bold font-mono">
-                        {review.album_rating?.toFixed(1) || "—"}
+                        {rating.value}
                       </span>
-                      <span className="text-white/30 text-xs">/ 10</span>
+                      <span className="text-white/30 text-xs">/ {rating.scale}</span>
                     </div>
                     <ChevronRight className="w-5 h-5 text-white/20 group-hover:text-white/40 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                   </button>
+                    );
+                  })()
                 ))}
               </div>
             )

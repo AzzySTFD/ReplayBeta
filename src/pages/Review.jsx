@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import TrackList from "@/components/TrackList";
 import RatingScale from "@/components/RatingScale";
 import { useToast } from "@/components/ui/use-toast";
+import { formatAdvancedReviewInput, formatReviewRatingValue, getReviewRatingScale, roundToHalfStep, roundToQuarterStep, validateAdvancedReviewInput } from "@/lib/reviewRatings";
 import { ArrowLeft, Loader2, Save, Music2, ToggleLeft, ToggleRight, Calendar, MessageCircle, Heart, Laugh, ThumbsDown, ThumbsUp, FolderOpen, Pencil, Trash2, Check, X, Shuffle, Clock3, Disc3, ListMusic, Building2, Tag } from "lucide-react";
 
 const formatRuntime = (runtimeMs) => {
@@ -39,7 +40,9 @@ export default function Review() {
   const [album, setAlbum] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [useManualRating, setUseManualRating] = useState(false);
+  const [useAdvancedRating, setUseAdvancedRating] = useState(false);
   const [manualRating, setManualRating] = useState(0);
+  const [advancedRatingInput, setAdvancedRatingInput] = useState("");
   const [notes, setNotes] = useState("");
   const [reviewId, setReviewId] = useState(isNew ? null : id);
   const [reviewOwnerId, setReviewOwnerId] = useState("");
@@ -76,7 +79,9 @@ export default function Review() {
 
     if (resetDraft) {
       setUseManualRating(false);
+      setUseAdvancedRating(false);
       setManualRating(0);
+      setAdvancedRatingInput("");
       setNotes("");
       setSelectedFolderId("");
       setReactions([]);
@@ -175,6 +180,8 @@ export default function Review() {
           setTracks(review.tracks || []);
           setUseManualRating(review.use_manual_rating || false);
           setManualRating(review.manual_rating || 0);
+          setUseAdvancedRating(Boolean(review.use_manual_rating && Number(review.manual_rating || 0) > 10));
+          setAdvancedRatingInput(Boolean(review.use_manual_rating && Number(review.manual_rating || 0) > 10) ? formatAdvancedReviewInput(review.manual_rating) : "");
           setNotes(review.notes || "");
           setReviewerName(review.username || "");
           setSelectedFolderId(review.folder_id || "");
@@ -261,8 +268,68 @@ export default function Review() {
     return rated.reduce((sum, t) => sum + t.rating, 0) / rated.length;
   }, [tracks]);
 
+  const isAdvancedReview = useManualRating && useAdvancedRating;
   const displayRating = useManualRating ? manualRating : autoRating;
+  const ratingScale = getReviewRatingScale(displayRating, isAdvancedReview);
+  const formattedDisplayRating = formatReviewRatingValue(displayRating, isAdvancedReview);
   const ratedCount = tracks.filter((t) => t.rating > 0).length;
+  const advancedRatingValidation = isAdvancedReview ? validateAdvancedReviewInput(advancedRatingInput) : { value: null, error: "" };
+
+  const handleToggleManualRating = () => {
+    if (useManualRating && !useAdvancedRating) {
+      setUseManualRating(false);
+      setManualRating(0);
+      return;
+    }
+
+    const nextManualRating = roundToHalfStep(Math.min(10, Math.max(0, isAdvancedReview ? manualRating / 10 : (manualRating || autoRating))));
+    setUseAdvancedRating(false);
+    setAdvancedRatingInput("");
+    setUseManualRating(true);
+    setManualRating(nextManualRating);
+  };
+
+  const handleToggleAdvancedRating = () => {
+    if (useAdvancedRating) {
+      setUseAdvancedRating(false);
+      setUseManualRating(false);
+      setManualRating(0);
+      setAdvancedRatingInput("");
+      return;
+    }
+
+    const seedRating = useManualRating && !useAdvancedRating
+      ? roundToQuarterStep(manualRating * 10)
+      : roundToQuarterStep(autoRating * 10);
+
+    setUseManualRating(true);
+    setUseAdvancedRating(true);
+    setManualRating(seedRating);
+    setAdvancedRatingInput(formatAdvancedReviewInput(seedRating));
+  };
+
+  const handleAdvancedRatingChange = (event) => {
+    const nextValue = event.target.value;
+    if (!/^\d{0,3}(\.\d{0,2})?$/.test(nextValue)) return;
+
+    setAdvancedRatingInput(nextValue);
+    if (!nextValue.trim()) {
+      setManualRating(0);
+      return;
+    }
+
+    const parsed = Number(nextValue);
+    if (Number.isFinite(parsed)) {
+      setManualRating(parsed);
+    }
+  };
+
+  const handleAdvancedRatingBlur = () => {
+    const validation = validateAdvancedReviewInput(advancedRatingInput);
+    if (validation.error || validation.value === null) return;
+    setManualRating(validation.value);
+    setAdvancedRatingInput(formatAdvancedReviewInput(validation.value));
+  };
 
   const handleReaction = async (emoji) => {
     if (!user || !reviewId) return;
@@ -427,8 +494,22 @@ export default function Review() {
       return;
     }
 
+    if (isAdvancedReview) {
+      const validation = validateAdvancedReviewInput(advancedRatingInput);
+      if (validation.error || validation.value === null) {
+        toast({ variant: "destructive", title: "Invalid advanced rating", description: validation.error });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      const savedManualRating = isAdvancedReview
+        ? validateAdvancedReviewInput(advancedRatingInput).value
+        : (useManualRating ? roundToHalfStep(manualRating) : 0);
+      const savedAlbumRating = isAdvancedReview
+        ? savedManualRating
+        : (useManualRating ? Math.round(savedManualRating * 10) / 10 : Math.round(autoRating * 10) / 10);
       const selectedFolder = folders.find((folder) => folder.id === selectedFolderId);
       const payload = {
         created_by_id: user?.id || null,
@@ -439,9 +520,9 @@ export default function Review() {
         release_year: album.release_year || "",
         username: myUsername,
         tracks,
-        album_rating: Math.round(displayRating * 10) / 10,
+        album_rating: savedAlbumRating,
         use_manual_rating: useManualRating,
-        manual_rating: useManualRating ? manualRating : 0,
+        manual_rating: useManualRating ? savedManualRating : 0,
         notes,
         reactions,
         comments,
@@ -637,34 +718,82 @@ export default function Review() {
             <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Album Rating</p>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl sm:text-5xl font-bold font-mono bg-gradient-to-r from-stone-300 to-slate-300 bg-clip-text text-transparent">
-                {displayRating > 0 ? displayRating.toFixed(1) : "—"}
+                {formattedDisplayRating}
               </span>
-              <span className="text-white/30 text-lg">/ 10</span>
+              <span className="text-white/30 text-lg">/ {ratingScale}</span>
             </div>
             {!useManualRating && (
               <p className="text-white/30 text-xs mt-1">
                 Auto-calculated from {ratedCount} of {tracks.length} {ratedCount === 1 ? "track" : "tracks"}
               </p>
             )}
+            {isAdvancedReview && (
+              <p className="text-white/30 text-xs mt-1">
+                Advanced Review uses typed scores from 0 to 100 in .25 increments.
+              </p>
+            )}
           </div>
 
           {!readOnly && (
             <>
-              <div className="sm:w-px sm:h-16 h-px w-full bg-white/10" />
+              <div className="sm:w-px sm:h-24 h-px w-full bg-white/10" />
               <div className="flex-1 max-w-full overflow-hidden">
                 <button
-                  onClick={() => setUseManualRating(!useManualRating)}
+                  onClick={handleToggleManualRating}
                   className="flex items-center gap-2 text-sm font-medium mb-2 hover:text-stone-300 transition-colors"
                 >
-                  {useManualRating ? (
+                  {useManualRating && !useAdvancedRating ? (
                     <ToggleRight className="w-5 h-5 text-stone-400" />
                   ) : (
                     <ToggleLeft className="w-5 h-5 text-white/30" />
                   )}
                   Override with manual rating
                 </button>
-                {useManualRating && (
+                {useManualRating && !useAdvancedRating && (
                   <RatingScale value={manualRating} onChange={setManualRating} size="lg" />
+                )}
+
+                <button
+                  onClick={handleToggleAdvancedRating}
+                  className="mt-3 flex items-center gap-2 text-sm font-medium hover:text-stone-300 transition-colors"
+                >
+                  {useAdvancedRating ? (
+                    <ToggleRight className="w-5 h-5 text-stone-400" />
+                  ) : (
+                    <ToggleLeft className="w-5 h-5 text-white/30" />
+                  )}
+                  Advanced Review
+                </button>
+
+                {useAdvancedRating && (
+                  <div className="mt-3 max-w-sm">
+                    <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+                      Typed Album Score
+                    </label>
+                    <div className="inline-flex w-full max-w-[18rem] items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 shadow-lg shadow-black/20">
+                      <div className="flex min-w-0 flex-1 items-center rounded-xl border border-stone-400/25 bg-white/[0.04] px-3 py-2.5 focus-within:border-stone-300/50 focus-within:bg-white/[0.06]">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={advancedRatingInput}
+                          onChange={handleAdvancedRatingChange}
+                          onBlur={handleAdvancedRatingBlur}
+                          placeholder="00.00"
+                          className="w-full min-w-0 bg-transparent font-mono text-base font-semibold tracking-[0.08em] text-white outline-none placeholder:text-white/20 sm:text-lg"
+                        />
+                        <span className="ml-2 whitespace-nowrap rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/40">
+                          /100
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-stone-400/20 bg-stone-400/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-200">
+                        Type
+                      </div>
+                    </div>
+                    <p className="mt-2 pl-1 text-[11px] text-white/28">Quarter-step only: 90.25, 90.50, 90.75.</p>
+                    {advancedRatingInput.trim() && advancedRatingValidation.error && (
+                      <p className="mt-2 pl-1 text-xs text-red-300">{advancedRatingValidation.error}</p>
+                    )}
+                  </div>
                 )}
               </div>
             </>

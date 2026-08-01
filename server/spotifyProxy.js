@@ -3,6 +3,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 import { createClient } from '@supabase/supabase-js';
 import { classifyImportSource, extractAlbumCandidatesFromHtml, normalizeImportUrl } from './importHelpers.js';
+import { getEnrichedSpotifyAlbumPayload, mapSpotifyAlbum, spotifyFetch } from '../api/_lib/spotify.js';
 
 const app = express();
 app.use(express.json());
@@ -17,73 +18,6 @@ const createSupabaseAdminClient = () => {
   return createClient(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-};
-
-const getSpotifyToken = async () => {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    return null;
-  }
-
-  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const response = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  });
-
-  if (!response.ok) {
-    throw new Error(`Spotify token request failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.access_token;
-};
-
-const spotifyFetch = async (path) => {
-  const token = await getSpotifyToken();
-  if (!token) {
-    return null;
-  }
-
-  const response = await fetch(`https://api.spotify.com/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Spotify API request failed: ${response.status} ${errorText}`);
-  }
-
-  return response.json();
-};
-
-const mapSpotifyAlbumDetails = (album) => {
-  const albumTracks = album.tracks?.items || [];
-  const totalTracks = Number(album.total_tracks ?? album.tracks?.total ?? 0);
-  const hasCompleteTrackList = totalTracks > 0 && albumTracks.length >= totalTracks;
-
-  return {
-    id: album.id,
-    title: album.name,
-    artist: (album.artists || []).map((artist) => artist.name).join(', '),
-    artwork_url: (album.images || []).find((image) => image.width >= 300)?.url || album.images?.[0]?.url || '',
-    release_year: (album.release_date || '').slice(0, 4),
-    release_date: album.release_date || '',
-    album_type: album.album_type || 'album',
-    track_count: totalTracks || null,
-    label: album.label || '',
-    genres: Array.isArray(album.genres) ? album.genres.filter(Boolean) : [],
-    runtime_ms: hasCompleteTrackList
-      ? albumTracks.reduce((total, track) => total + Number(track.duration_ms || 0), 0)
-      : null,
-    credits: [],
-  };
 };
 
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
@@ -108,14 +42,7 @@ const fetchRandomAlbum = async () => {
     const randomPage = await spotifyFetch(`/search?q=${encodeURIComponent(seed)}&type=album&limit=1&offset=${randomOffset}&market=US`);
     const album = randomPage?.albums?.items?.[0];
     if (album) {
-      return {
-        id: album.id,
-        title: album.name,
-        artist: (album.artists || []).map((artist) => artist.name).join(', '),
-        artwork_url: (album.images || []).find((image) => image.width >= 300)?.url || album.images?.[0]?.url || '',
-        release_year: (album.release_date || '').slice(0, 4),
-        album_type: album.album_type || 'album',
-      };
+      return mapSpotifyAlbum(album);
     }
   }
 
@@ -134,14 +61,7 @@ app.post('/api/spotify/search', async (req, res) => {
       return res.json({ albums: [] });
     }
 
-    const albums = (searchData.albums?.items || []).map((album) => ({
-      id: album.id,
-      title: album.name,
-      artist: (album.artists || []).map((artist) => artist.name).join(', '),
-      artwork_url: (album.images || []).find((image) => image.width >= 300)?.url || album.images?.[0]?.url || '',
-      release_year: (album.release_date || '').slice(0, 4),
-      album_type: album.album_type || 'album',
-    }));
+    const albums = (searchData.albums?.items || []).map(mapSpotifyAlbum);
 
     return res.json({ albums });
   } catch (error) {
@@ -166,17 +86,7 @@ app.post('/api/spotify/random-album', async (_req, res) => {
 
 app.get('/api/spotify/albums/:albumId/tracks', async (req, res) => {
   try {
-    const data = await spotifyFetch(`/albums/${req.params.albumId}?market=US`);
-    if (!data) {
-      return res.json({ tracks: [], album: null });
-    }
-
-    const tracks = (data.tracks?.items || []).map((track) => ({
-      position: track.track_number,
-      title: track.name,
-    }));
-
-    return res.json({ tracks, album: mapSpotifyAlbumDetails(data) });
+    return res.json(await getEnrichedSpotifyAlbumPayload(req.params.albumId));
   } catch (error) {
     console.error('Spotify album tracks proxy error', error);
     return res.status(500).json({ error: error.message || 'Spotify album tracks failed' });
@@ -190,17 +100,7 @@ app.get('/api/spotify/albums/tracks', async (req, res) => {
       return res.status(400).json({ error: 'Missing album ID' });
     }
 
-    const data = await spotifyFetch(`/albums/${encodeURIComponent(albumId)}?market=US`);
-    if (!data) {
-      return res.json({ tracks: [], album: null });
-    }
-
-    const tracks = (data.tracks?.items || []).map((track) => ({
-      position: track.track_number,
-      title: track.name,
-    }));
-
-    return res.json({ tracks, album: mapSpotifyAlbumDetails(data) });
+    return res.json(await getEnrichedSpotifyAlbumPayload(albumId));
   } catch (error) {
     console.error('Spotify album tracks proxy error', error);
     return res.status(500).json({ error: error.message || 'Spotify album tracks failed' });

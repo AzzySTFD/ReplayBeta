@@ -7,6 +7,7 @@ import { Image } from "@/components/ui/image";
 import { useToast } from "@/components/ui/use-toast";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import PullToRefresh from "@/components/PullToRefresh";
+import { formatReviewRatingValue, isAdvancedReviewRatingValue } from "@/lib/reviewRatings";
 import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen } from "lucide-react";
 
 const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
@@ -505,6 +506,9 @@ export default function UserProfile() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {visibleReviews.map((review) => (
+                  (() => {
+                    const advanced = isAdvancedReviewRatingValue(review.album_rating);
+                    return (
                   <button
                     key={review.id}
                     onClick={() => navigate(`/review/${review.id}`)}
@@ -519,13 +523,16 @@ export default function UserProfile() {
                       <p className="text-sm font-medium text-white truncate">{review.album_title || "Untitled album"}</p>
                       <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
                       <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
-                        <span className="rounded bg-white/10 px-1.5 py-0.5">{Number(review.album_rating || 0).toFixed(1)}</span>
+                        <span className="rounded bg-white/10 px-1.5 py-0.5">{formatReviewRatingValue(review.album_rating, advanced)}</span>
+                        <span>{advanced ? "/100" : "/10"}</span>
                         {review.release_year && <span>{review.release_year}</span>}
                         <span>{review.tracks?.length || 0} tracks</span>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-white/25 group-hover:text-white/50 transition-colors" />
                   </button>
+                    );
+                  })()
                 ))}
               </div>
             )}

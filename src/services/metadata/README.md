@@ -1,6 +1,6 @@
 # SpinRate metadata architecture
 
-`src/services/metadata` is an isolated, provider-agnostic foundation for music metadata. It is not wired into the current application, its Spotify API routes, Supabase data model, or UI. This initial layer makes no network requests.
+`src/services/metadata` is a provider-agnostic foundation for music metadata. It now supports Spotify as the primary provider and MusicBrainz as an enrichment source for normalized album and artist lookups. The current UI still consumes the existing Spotify-shaped API payloads, while server handlers selectively enrich those payloads with MusicBrainz details.
 
 ## Design goals
 
@@ -31,22 +31,22 @@ Every provider implements `MetadataProvider`:
 - `getArtist` and `getAlbum` retrieve a single source record and normalize it.
 - Providers own API authentication, request limits, raw response parsing, and source-specific identifier handling when those integrations are added.
 
-`MusicBrainzProvider` is the first working provider. It searches artists and release groups, looks up artists by MBID, and enriches release-group lookups with a representative official release for labels and tracks. It returns only normalized models.
+`MusicBrainzProvider` searches artists and release groups, looks up artists by MBID, and enriches release-group lookups with a representative official release for labels and tracks. It returns only normalized models.
 
 The provider identifies itself with a User-Agent and enforces MusicBrainz's one-request-per-second guidance by default. This is request throttling only; it does not cache data.
 
-`SpotifyProvider` and `LastFmProvider` remain placeholders. They intentionally throw a clear not-implemented error and make no API calls.
+`SpotifyProvider` normalizes Spotify artist, album, and track responses. It can use either an injected request delegate or a built-in authenticated fetch client. `LastFmProvider` remains a placeholder.
 
 ## MetadataService responsibilities
 
-`MetadataService` currently registers providers and exposes them by stable ID. Future work can add provider selection, cross-provider search, matching, enrichment, merging, caching, retries, and field-precedence rules here. Keeping that orchestration out of UI and API route code prevents provider-specific coupling.
+`MetadataService` still registers providers by stable ID, and it now also orchestrates cross-provider artist and album lookups. By default it treats Spotify as the primary source, matches MusicBrainz records by normalized artist/title heuristics, and merges enrichment fields such as labels, genres, styles, runtime, and provider links without replacing Spotify identifiers or artwork.
+
+The active Spotify album-detail handlers also use a small server-side bridge that applies the same enrichment idea to the existing UI contract. The response shape remains unchanged for the frontend: Spotify fields such as `artist`, `artwork_url`, `release_year`, `album_type`, `tracks`, and `runtime_ms` are preserved while MusicBrainz fills gaps like labels, genres, and runtime when Spotify does not provide them.
 
 ## Adding Discogs or another provider
 
 1. Create `providers/DiscogsProvider.ts` implementing `MetadataProvider`.
 2. Map Discogs responses into `Artist` and `Album` models; do not expose raw Discogs objects.
 3. Add its export to `providers/index.ts`.
-4. Register it when a future composition root creates `MetadataService`.
+4. Register it when a composition root creates `MetadataService`.
 5. Define and test any source precedence or entity-matching rules in `MetadataService`, not in the provider or UI.
-
-No current application feature should import this layer until an explicit integration task defines which providers, API boundaries, cache behavior, and metadata precedence rules are needed.
