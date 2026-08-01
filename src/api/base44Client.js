@@ -285,7 +285,7 @@ const createProfileCollection = () => ({
 
     return rows.filter((row) => entries.every(([key, value]) => {
       if (key === 'created_by_id' || key === 'user_id') {
-        return row.created_by_id === value;
+        return row.created_by_id === value || row.id === value;
       }
 
       return row[key] === value;
@@ -294,15 +294,17 @@ const createProfileCollection = () => ({
   get: async (id) => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+      .select('*');
 
     if (error) {
       throw error;
     }
 
-    return mapProfileRowToEntity(data);
+    const match = (data || []).map(mapProfileRowToEntity).find((row) => (
+      row.id === id || row.created_by_id === id || row.username === id
+    ));
+
+    return match || null;
   },
   create: async (payload = {}) => {
     const userId = payload.created_by_id || payload.user_id || await getCurrentAuthUserId();
@@ -333,6 +335,45 @@ const createProfileCollection = () => ({
     }
 
     return mapProfileRowToEntity(data);
+  },
+  update: async (id, payload = {}) => {
+    const profileRow = stripUndefined({
+      username: payload.username !== undefined ? String(payload.username || '').trim() : undefined,
+      display_name: payload.display_name !== undefined ? String(payload.display_name || '').trim() : undefined,
+      bio: payload.bio !== undefined ? String(payload.bio || '') : undefined,
+      avatar_url: payload.avatar_url !== undefined ? String(payload.avatar_url || '') : undefined,
+      social_links: payload.social_links !== undefined ? payload.social_links : undefined,
+      discord_channel_id: payload.discord_channel_id !== undefined ? String(payload.discord_channel_id || '') : undefined,
+      discord_channel_name: payload.discord_channel_name !== undefined ? String(payload.discord_channel_name || '') : undefined,
+      is_public: payload.is_public !== undefined ? payload.is_public : undefined,
+    });
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(profileRow)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      return mapProfileRowToEntity(data);
+    }
+
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('profiles')
+      .upsert({ id, user_id: id, ...profileRow }, { onConflict: 'id' })
+      .select('*')
+      .maybeSingle();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    return mapProfileRowToEntity(fallbackData);
   },
   delete: async (id) => {
     const { error } = await supabase
