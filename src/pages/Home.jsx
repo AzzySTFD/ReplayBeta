@@ -11,6 +11,27 @@ import PullToRefresh from "@/components/PullToRefresh";
 import { db } from "@/api/base44Client";
 import { formatRatingDisplay, getRatingDisplayPreference } from "@/utils/ratings";
 
+const HOME_CACHE_TTL_MS = 30 * 1000;
+const homeDataCache = new Map();
+const followingReviewCache = new Map();
+
+const readCache = (cacheMap, key) => {
+  const cached = cacheMap.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > HOME_CACHE_TTL_MS) {
+    cacheMap.delete(key);
+    return null;
+  }
+  return cached.value;
+};
+
+const writeCache = (cacheMap, key, value) => {
+  cacheMap.set(key, {
+    cachedAt: Date.now(),
+    value,
+  });
+};
+
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -29,9 +50,29 @@ export default function Home() {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [ratingDisplayPreference, setRatingDisplayPreference] = useState("100");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
+  const [lastLoadUsedCache, setLastLoadUsedCache] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (forceRefresh = false) => {
     if (!user) return;
+
+    const cacheKey = `home:${user.id}`;
+    if (!forceRefresh) {
+      const cachedHome = readCache(homeDataCache, cacheKey);
+      if (cachedHome) {
+        setProfile(cachedHome.profile || null);
+        setReviews(cachedHome.reviews || []);
+        setFollows(cachedHome.follows || []);
+        setFolders(cachedHome.folders || []);
+        setFeed(cachedHome.feed || []);
+        setRatingDisplayPreference(cachedHome.ratingDisplayPreference || "100");
+        setLastUpdatedAt(new Date());
+        setLastLoadUsedCache(true);
+        setLoadingData(false);
+        return;
+      }
+    }
+
     try {
       const [myProfileResult, myReviewsResult, myFollowsResult, myFoldersResult] = await Promise.allSettled([
         db.entities.Profile.filter({ created_by_id: user.id }),
@@ -45,29 +86,64 @@ export default function Home() {
       const myFollows = myFollowsResult.status === "fulfilled" ? myFollowsResult.value : [];
       const myFolders = myFoldersResult.status === "fulfilled" ? myFoldersResult.value : [];
 
-      const allReviews = await db.entities.Review.list("-updated_date", 200);
       let profile = myProfile[0] || null;
       if (!profile) {
         profile = await db.entities.Profile.get(user.id);
       }
       setRatingDisplayPreference(getRatingDisplayPreference(profile));
-      const fallbackReviews = allReviews.filter((review) => {
-        if (review.created_by_id === user.id) return true;
-        if (profile && review.created_by_id === profile.created_by_id) return true;
-        if (profile && review.created_by_id === profile.id) return true;
-        return false;
-      });
-      const resolvedReviews = myReviews.length > 0 ? myReviews : fallbackReviews;
+      let resolvedReviews = myReviews;
+      if (resolvedReviews.length === 0 && profile?.id && profile.id !== profile.created_by_id) {
+        resolvedReviews = await db.entities.Review.filter({ created_by_id: profile.id }, "-updated_date", 50);
+      }
 
       setProfile(profile || null);
       setReviews(resolvedReviews);
       setFollows(myFollows);
       setFolders(myFolders);
+      setLastUpdatedAt(new Date());
+      setLastLoadUsedCache(false);
 
       const followingIds = myFollows.map((f) => f.following_id);
       if (followingIds.length > 0) {
-        const allRecent = await db.entities.Review.list("-updated_date", 200);
-        setFeed(allRecent.filter((r) => followingIds.includes(r.created_by_id)));
+        const chunks = await Promise.all(followingIds.map(async (id) => {
+          const feedCacheKey = `following:${id}`;
+          if (!forceRefresh) {
+            const cached = readCache(followingReviewCache, feedCacheKey);
+            if (cached) return cached;
+          }
+
+          const rows = await db.entities.Review.filter({ created_by_id: id }, "-updated_date", 20);
+          writeCache(followingReviewCache, feedCacheKey, rows);
+          return rows;
+        }));
+        const merged = chunks.flat().sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+        const seen = new Set();
+        const uniqueFeed = [];
+        for (const review of merged) {
+          if (!review?.id || seen.has(review.id)) continue;
+          seen.add(review.id);
+          uniqueFeed.push(review);
+          if (uniqueFeed.length >= 200) break;
+        }
+        setFeed(uniqueFeed);
+        writeCache(homeDataCache, cacheKey, {
+          profile: profile || null,
+          reviews: resolvedReviews,
+          follows: myFollows,
+          folders: myFolders,
+          feed: uniqueFeed,
+          ratingDisplayPreference: getRatingDisplayPreference(profile),
+        });
+      } else {
+        setFeed([]);
+        writeCache(homeDataCache, cacheKey, {
+          profile: profile || null,
+          reviews: resolvedReviews,
+          follows: myFollows,
+          folders: myFolders,
+          feed: [],
+          ratingDisplayPreference: getRatingDisplayPreference(profile),
+        });
       }
     } catch (e) {
       console.error(e);
@@ -77,10 +153,10 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
-    loadData();
+    loadData(false);
   }, [loadData]);
 
-  const { pullDistance, refreshing } = usePullToRefresh(loadData);
+  const { pullDistance, refreshing } = usePullToRefresh(() => loadData(true));
 
   const loadFeatured = useCallback(async () => {
     setLoadingFeatured(true);
@@ -149,6 +225,11 @@ export default function Home() {
     }
     return reviews.filter((review) => review.folder_id === selectedFolderId);
   }, [reviews, selectedFolderId]);
+
+  const formatLastUpdated = useMemo(() => {
+    if (!lastUpdatedAt) return "";
+    return lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }, [lastUpdatedAt]);
 
 
   return (
@@ -220,6 +301,12 @@ export default function Home() {
 
       {!hasSearched && (
         <section>
+          {lastUpdatedAt && (
+            <p className="mb-4 text-xs text-white/35">
+              Last updated: {formatLastUpdated} {lastLoadUsedCache ? "(cache)" : "(live)"}
+            </p>
+          )}
+
           <div className="flex items-center gap-1 mb-6 p-1 bg-white/[0.03] rounded-xl border border-white/5 w-fit">
             <button
               onClick={() => setTab("mine")}

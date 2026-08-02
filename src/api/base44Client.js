@@ -271,43 +271,44 @@ const createProfileCollection = () => ({
     return (data || []).map(mapProfileRowToEntity);
   },
   filter: async (criteria = {}) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const entries = Object.entries(criteria);
 
+    let query = supabase.from('profiles').select('*');
+    for (const [key, value] of entries) {
+      if (key === 'created_by_id' || key === 'user_id') {
+        query = query.eq('created_by_id', value);
+      } else if (key === 'username') {
+        query = query.ilike('username', String(value || '').trim());
+      } else {
+        query = query.eq(key, value);
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
     if (error) {
       throw error;
     }
 
-    const rows = (data || []).map(mapProfileRowToEntity);
-    const entries = Object.entries(criteria);
-    if (entries.length === 0) {
-      return rows;
-    }
-
-    return rows.filter((row) => entries.every(([key, value]) => {
-      if (key === 'created_by_id' || key === 'user_id') {
-        return row.created_by_id === value || row.id === value;
-      }
-
-      return row[key] === value;
-    }));
+    return (data || []).map(mapProfileRowToEntity);
   },
   get: async (id) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*');
+    const lookups = [
+      supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
+      supabase.from('profiles').select('*').eq('created_by_id', id).maybeSingle(),
+      supabase.from('profiles').select('*').ilike('username', String(id || '').trim()).maybeSingle(),
+    ];
 
-    if (error) {
-      throw error;
+    for (const lookup of lookups) {
+      const { data, error } = await lookup;
+      if (error) {
+        throw error;
+      }
+      if (data) {
+        return mapProfileRowToEntity(data);
+      }
     }
 
-    const match = (data || []).map(mapProfileRowToEntity).find((row) => (
-      row.id === id || row.created_by_id === id || row.username === id
-    ));
-
-    return match || null;
+    return null;
   },
   create: async (payload = {}) => {
     const userId = payload.created_by_id || payload.user_id || await getCurrentAuthUserId();
@@ -414,6 +415,20 @@ const toSupabaseOrder = (orderBy, defaultColumn = 'created_at') => {
 
 const stripUndefined = (value) => {
   return Object.fromEntries(Object.entries(value).filter(([, currentValue]) => currentValue !== undefined));
+};
+
+const isMissingColumnError = (error) => {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return message.includes('column') && message.includes('does not exist');
+};
+
+const uniqueById = (rows = []) => {
+  const map = new Map();
+  for (const row of rows) {
+    if (!row?.id) continue;
+    map.set(row.id, row);
+  }
+  return [...map.values()];
 };
 
 const mapFolderRowToEntity = (row) => {
@@ -558,21 +573,56 @@ const createFollowCollection = () => ({
   },
   filter: async (criteria = {}, orderBy, limit) => {
     const { column, ascending } = toSupabaseOrder(orderBy);
-    const { data, error } = await supabase
-      .from('follows')
-      .select('*')
-      .order(column, { ascending });
+    const ownerId = criteria.created_by_id ?? criteria.user_id;
+    const followingId = criteria.following_id ?? criteria.following_user_id;
+    const followingUsername = criteria.following_username;
 
-    if (error) {
-      throw error;
+    const attempts = [
+      { ownerColumn: 'created_by_id', followingColumn: 'following_id' },
+      { ownerColumn: 'user_id', followingColumn: 'following_user_id' },
+      { ownerColumn: 'user_id', followingColumn: 'following_id' },
+      { ownerColumn: 'created_by_id', followingColumn: 'following_user_id' },
+    ];
+
+    const rows = [];
+    let sawSuccess = false;
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      let query = supabase.from('follows').select('*');
+      if (ownerId !== undefined) {
+        query = query.eq(attempt.ownerColumn, ownerId);
+      }
+      if (followingId !== undefined) {
+        query = query.eq(attempt.followingColumn, followingId);
+      }
+      if (followingUsername !== undefined) {
+        query = query.eq('following_username', followingUsername);
+      }
+
+      query = query.order(column, { ascending });
+      if (Number.isFinite(limit)) {
+        query = query.limit(limit);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        if (isMissingColumnError(error)) {
+          continue;
+        }
+        lastError = error;
+        continue;
+      }
+
+      sawSuccess = true;
+      rows.push(...(data || []).map(mapFollowRowToEntity));
     }
 
-    const rows = (data || []).map(mapFollowRowToEntity);
-    const entries = Object.entries(criteria);
-    const filteredRows = entries.length === 0
-      ? rows
-      : rows.filter((row) => matchesFollowCriteria(row, criteria));
+    if (!sawSuccess && lastError) {
+      throw lastError;
+    }
 
+    const filteredRows = uniqueById(rows).filter((row) => matchesFollowCriteria(row, criteria));
     return Number.isFinite(limit) ? filteredRows.slice(0, limit) : filteredRows;
   },
   get: async (id) => {
@@ -753,20 +803,66 @@ const createReviewCollection = () => ({
   },
   filter: async (criteria = {}, orderBy, limit) => {
     const { column, ascending } = toSupabaseOrder(orderBy, 'updated_at');
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .order(column, { ascending });
+    const entries = Object.entries(criteria);
+    const ownerId = criteria.created_by_id ?? criteria.user_id;
 
-    if (error) {
-      throw error;
+    const buildQuery = (ownerColumn) => {
+      let query = supabase.from('reviews').select('*');
+
+      for (const [key, value] of entries) {
+        if (key === 'created_by_id' || key === 'user_id') {
+          if (ownerId !== undefined) {
+            query = query.eq(ownerColumn, ownerId);
+          }
+        } else {
+          query = query.eq(key, value);
+        }
+      }
+
+      query = query.order(column, { ascending });
+      if (Number.isFinite(limit)) {
+        query = query.limit(limit);
+      }
+
+      return query;
+    };
+
+    const collectedRows = [];
+    let primaryError = null;
+
+    if (ownerId !== undefined) {
+      const { data: firstRows, error: firstError } = await buildQuery('created_by_id');
+      if (firstError) {
+        if (!isMissingColumnError(firstError)) {
+          primaryError = firstError;
+        }
+      } else {
+        collectedRows.push(...(firstRows || []));
+      }
+
+      const { data: fallbackRows, error: fallbackError } = await buildQuery('user_id');
+      if (fallbackError) {
+        if (!isMissingColumnError(fallbackError) && !primaryError) {
+          primaryError = fallbackError;
+        }
+      } else {
+        collectedRows.push(...(fallbackRows || []));
+      }
+    } else {
+      const { data, error } = await buildQuery('created_by_id');
+      if (error) {
+        throw error;
+      }
+      collectedRows.push(...(data || []));
     }
 
-    const rows = (data || []).map(mapReviewRowToEntity);
-    const entries = Object.entries(criteria);
-    const filteredRows = entries.length === 0
-      ? rows
-      : rows.filter((row) => entries.every(([key, value]) => {
+    if (collectedRows.length === 0 && primaryError) {
+      throw primaryError;
+    }
+
+    const filteredRows = uniqueById(collectedRows)
+      .map(mapReviewRowToEntity)
+      .filter((row) => entries.every(([key, value]) => {
         if (key === 'created_by_id' || key === 'user_id') {
           return row.created_by_id === value;
         }

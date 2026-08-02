@@ -13,6 +13,33 @@ import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Glob
 const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
 const SOCIAL_KEYS = ["instagram", "twitter", "tiktok", "twitch", "youtube", "kick", "website"];
 const DEFAULT_SECTION_ORDER = ["socials", "folders", "reviews"];
+const PROFILE_CACHE_TTL_MS = 60 * 1000;
+const profileLookupCache = new Map();
+
+const readCachedProfileLookup = (ownerId = "") => {
+  const key = String(ownerId || "").trim();
+  if (!key) return null;
+
+  const cached = profileLookupCache.get(key);
+  if (!cached) return null;
+
+  if (Date.now() - cached.cachedAt > PROFILE_CACHE_TTL_MS) {
+    profileLookupCache.delete(key);
+    return null;
+  }
+
+  return cached.profile;
+};
+
+const writeCachedProfileLookup = (ownerId = "", profile = null) => {
+  const key = String(ownerId || "").trim();
+  if (!key || !profile) return;
+
+  profileLookupCache.set(key, {
+    cachedAt: Date.now(),
+    profile,
+  });
+};
 
 const ensureHttp = (value = "") => {
   const trimmed = value.trim();
@@ -59,9 +86,15 @@ export default function UserProfile() {
   const [openConnections, setOpenConnections] = useState("");
   const [loading, setLoading] = useState(true);
   const [viewerRatingDisplayPreference, setViewerRatingDisplayPreference] = useState("100");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   const resolveProfile = useCallback(async (value) => {
     if (!value) return null;
+
+    if (currentUser?.id && value === currentUser.id) {
+      const myProfile = await db.entities.Profile.filter({ created_by_id: currentUser.id });
+      if (myProfile[0]) return myProfile[0];
+    }
 
     const byOwner = await db.entities.Profile.filter({ created_by_id: value });
     if (byOwner[0]) return byOwner[0];
@@ -70,8 +103,17 @@ export default function UserProfile() {
     if (byId) return byId;
 
     const byUsername = await db.entities.Profile.filter({ username: value });
-    return byUsername[0] || null;
-  }, []);
+    if (byUsername[0]) return byUsername[0];
+
+    if (currentUser?.id) {
+      const myProfile = await db.entities.Profile.filter({ created_by_id: currentUser.id });
+      if (myProfile[0] && myProfile[0].username === value) {
+        return myProfile[0];
+      }
+    }
+
+    return null;
+  }, [currentUser?.id]);
 
   const loadData = useCallback(async () => {
     try {
@@ -106,29 +148,51 @@ export default function UserProfile() {
       const followingByUser = followingByUserResult.status === "fulfilled" ? followingByUserResult.value : [];
 
       const followerIds = [...new Set((followersOfUser || []).map((row) => row.created_by_id).filter(Boolean))];
-      const followerProfiles = await Promise.all(
-        followerIds.map(async (followerId) => {
-          const matches = await db.entities.Profile.filter({ created_by_id: followerId });
-          return {
-            id: followerId,
-            username: matches[0]?.username || "Unknown user",
-            avatar_url: matches[0]?.avatar_url || "",
-          };
-        })
-      );
-
       const followingIds = [...new Set((followingByUser || []).map((row) => row.following_id).filter(Boolean))];
-      const followingProfiles = await Promise.all(
-        followingIds.map(async (followingId) => {
-          const matches = await db.entities.Profile.filter({ created_by_id: followingId });
-          return {
-            id: followingId,
-            username: matches[0]?.username || "",
-            avatar_url: matches[0]?.avatar_url || "",
-          };
+      const profileOwnerIds = [...new Set([...followerIds, ...followingIds])];
+
+      const profileByOwnerId = new Map();
+      await Promise.all(profileOwnerIds.map(async (ownerId) => {
+        const cached = readCachedProfileLookup(ownerId);
+        if (cached) {
+          profileByOwnerId.set(ownerId, cached);
+          return;
+        }
+
+        try {
+          const matches = await db.entities.Profile.filter({ created_by_id: ownerId });
+          const first = matches[0] || null;
+          if (first) {
+            writeCachedProfileLookup(ownerId, first);
+            profileByOwnerId.set(ownerId, first);
+          }
+        } catch {
+          // Best-effort cache population; keep loading resilient.
+        }
+      }));
+
+      const followerProfiles = followerIds.map((followerId) => {
+        const matched = profileByOwnerId.get(followerId);
+        return {
+          id: followerId,
+          username: matched?.username || "Unknown user",
+          avatar_url: matched?.avatar_url || "",
+        };
+      });
+
+      const followingProfileById = new Map(
+        followingIds.map((followingId) => {
+          const matched = profileByOwnerId.get(followingId);
+          return [
+            followingId,
+            {
+              id: followingId,
+              username: matched?.username || "",
+              avatar_url: matched?.avatar_url || "",
+            },
+          ];
         })
       );
-      const followingProfileById = new Map(followingProfiles.map((entry) => [entry.id, entry]));
 
       const followingEntries = (followingByUser || []).map((row) => {
         const matchedProfile = followingProfileById.get(row.following_id);
@@ -139,23 +203,14 @@ export default function UserProfile() {
         };
       });
 
-      let allReviews = [];
-      try {
-        allReviews = await db.entities.Review.list("-updated_date", 200);
-      } catch {
-        allReviews = [];
-      }
       const profile = profiles[0] || resolvedProfile || null;
-      const fallbackReviews = allReviews.filter((review) => {
-        if (review.created_by_id === resolvedUserId) return true;
-        if (review.created_by_id === routeIdentifier) return true;
-        if (profile && review.created_by_id === profile.created_by_id) return true;
-        if (profile && review.created_by_id === profile.id) return true;
-        return false;
-      });
-      const resolvedReviews = userReviews.length > 0 ? userReviews : fallbackReviews;
+      let resolvedReviews = userReviews;
+      if (resolvedReviews.length === 0 && profile?.id && profile.id !== profile.created_by_id) {
+        resolvedReviews = await db.entities.Review.filter({ created_by_id: profile.id }, "-updated_date", 50);
+      }
 
       if (profiles.length > 0) setProfile(profiles[0]);
+      else setProfile(profile);
       if (currentUser) {
         const viewerProfiles = await db.entities.Profile.filter({ created_by_id: currentUser.id });
         setViewerRatingDisplayPreference(getRatingDisplayPreference(viewerProfiles[0] || null));
@@ -166,6 +221,7 @@ export default function UserProfile() {
       setFollowing(followingEntries);
       if (myFollows.length > 0) setFollowRecord(myFollows[0]);
       if (myFollows.length === 0) setFollowRecord(null);
+      setLastUpdatedAt(new Date());
     } catch (e) {
       console.error(e);
     } finally {
@@ -242,6 +298,10 @@ export default function UserProfile() {
     ? folderScopedReviews
     : folderScopedReviews.filter((review) => String(review?.release_year || "").includes(selectedYear));
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) || null;
+  const formattedLastUpdated = useMemo(() => {
+    if (!lastUpdatedAt) return "";
+    return lastUpdatedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }, [lastUpdatedAt]);
 
   useEffect(() => {
     if (selectedYear !== "all" && !availableYears.includes(selectedYear)) {
@@ -336,6 +396,10 @@ export default function UserProfile() {
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
+
+      {lastUpdatedAt && (
+        <p className="mb-4 text-xs text-white/35">Last updated: {formattedLastUpdated}</p>
+      )}
 
       <div className="mb-8">
         {(desktopBanner || mobileBanner) && (
