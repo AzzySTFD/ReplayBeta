@@ -272,35 +272,75 @@ const createProfileCollection = () => ({
   },
   filter: async (criteria = {}) => {
     const entries = Object.entries(criteria);
+    const ownerId = criteria.created_by_id ?? criteria.user_id;
 
-    let query = supabase.from('profiles').select('*');
-    for (const [key, value] of entries) {
-      if (key === 'created_by_id' || key === 'user_id') {
-        query = query.eq('created_by_id', value);
-      } else if (key === 'username') {
-        query = query.ilike('username', String(value || '').trim());
-      } else {
-        query = query.eq(key, value);
+    const buildQuery = (ownerColumn) => {
+      let query = supabase.from('profiles').select('*');
+
+      for (const [key, value] of entries) {
+        if (key === 'created_by_id' || key === 'user_id') {
+          if (ownerId !== undefined) {
+            query = query.eq(ownerColumn, ownerId);
+          }
+        } else if (key === 'username') {
+          query = query.ilike('username', String(value || '').trim());
+        } else {
+          query = query.eq(key, value);
+        }
       }
+
+      return query.order('created_at', { ascending: false });
+    };
+
+    const rows = [];
+    let primaryError = null;
+
+    if (ownerId !== undefined) {
+      const { data: ownerRows, error: ownerError } = await buildQuery('created_by_id');
+      if (ownerError) {
+        if (!isMissingColumnError(ownerError)) {
+          primaryError = ownerError;
+        }
+      } else {
+        rows.push(...(ownerRows || []));
+      }
+
+      const { data: fallbackRows, error: fallbackError } = await buildQuery('user_id');
+      if (fallbackError) {
+        if (!isMissingColumnError(fallbackError) && !primaryError) {
+          primaryError = fallbackError;
+        }
+      } else {
+        rows.push(...(fallbackRows || []));
+      }
+    } else {
+      const { data, error } = await buildQuery('created_by_id');
+      if (error) {
+        throw error;
+      }
+      rows.push(...(data || []));
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
-    if (error) {
-      throw error;
+    if (rows.length === 0 && primaryError) {
+      throw primaryError;
     }
 
-    return (data || []).map(mapProfileRowToEntity);
+    return uniqueById(rows).map(mapProfileRowToEntity);
   },
   get: async (id) => {
     const lookups = [
       supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
       supabase.from('profiles').select('*').eq('created_by_id', id).maybeSingle(),
+      supabase.from('profiles').select('*').eq('user_id', id).maybeSingle(),
       supabase.from('profiles').select('*').ilike('username', String(id || '').trim()).maybeSingle(),
     ];
 
     for (const lookup of lookups) {
       const { data, error } = await lookup;
       if (error) {
+        if (isMissingColumnError(error)) {
+          continue;
+        }
         throw error;
       }
       if (data) {
@@ -316,7 +356,7 @@ const createProfileCollection = () => ({
       throw new Error('Authenticated user is required to create a profile');
     }
 
-    const profileRow = {
+    const baseProfileRow = {
       created_by_id: userId,
       username: String(payload.username || '').trim(),
       display_name: String(payload.display_name || '').trim(),
@@ -328,17 +368,49 @@ const createProfileCollection = () => ({
       is_public: payload.is_public ?? true,
     };
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert(profileRow, { onConflict: 'created_by_id' })
-      .select('*')
-      .single();
+    const attempts = [
+      {
+        row: baseProfileRow,
+        onConflict: 'created_by_id',
+      },
+      {
+        row: {
+          ...baseProfileRow,
+          user_id: userId,
+          created_by_id: undefined,
+        },
+        onConflict: 'user_id',
+      },
+    ];
 
-    if (error) {
-      throw error;
+    let created = null;
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      const row = stripUndefined(attempt.row);
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(row, { onConflict: attempt.onConflict })
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        created = data;
+        break;
+      }
+
+      if (error && isMissingColumnError(error)) {
+        continue;
+      }
+
+      lastError = error || new Error('Profile create failed');
     }
 
-    return mapProfileRowToEntity(data);
+    if (!created) {
+      throw lastError || new Error('Profile create failed');
+    }
+
+    return mapProfileRowToEntity(created);
   },
   update: async (id, payload = {}) => {
     const profileRow = stripUndefined({
@@ -352,37 +424,48 @@ const createProfileCollection = () => ({
       is_public: payload.is_public !== undefined ? payload.is_public : undefined,
     });
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(profileRow)
-      .eq('id', id)
-      .select('*')
-      .maybeSingle();
+    const attempts = [
+      { column: 'id', row: profileRow },
+      { column: 'created_by_id', row: profileRow },
+      {
+        column: 'user_id',
+        row: stripUndefined({
+          ...profileRow,
+          created_by_id: undefined,
+        }),
+      },
+    ];
 
-    if (error) {
-      throw error;
+    let updated = null;
+    let lastError = null;
+
+    for (const attempt of attempts) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(attempt.row)
+        .eq(attempt.column, id)
+        .select('*')
+        .maybeSingle();
+
+      if (!error && data) {
+        updated = data;
+        break;
+      }
+
+      if (error && isMissingColumnError(error)) {
+        continue;
+      }
+
+      if (error) {
+        lastError = error;
+      }
     }
 
-    if (error) {
-      throw error;
+    if (!updated && lastError) {
+      throw lastError;
     }
 
-    if (data) {
-      return mapProfileRowToEntity(data);
-    }
-
-    const { data: fallbackData, error: fallbackError } = await supabase
-      .from('profiles')
-      .update(profileRow)
-      .eq('created_by_id', id)
-      .select('*')
-      .maybeSingle();
-
-    if (fallbackError) {
-      throw fallbackError;
-    }
-
-    return mapProfileRowToEntity(fallbackData);
+    return mapProfileRowToEntity(updated);
   },
   delete: async (id) => {
     const { error } = await supabase
