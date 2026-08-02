@@ -274,6 +274,13 @@ const createProfileCollection = () => ({
     const entries = Object.entries(criteria);
     const ownerId = criteria.created_by_id ?? criteria.user_id;
 
+    if (ownerId !== undefined && !isLikelyUuid(ownerId)) {
+      const hasOtherCriteria = entries.some(([key]) => key !== 'created_by_id' && key !== 'user_id');
+      if (!hasOtherCriteria) {
+        return [];
+      }
+    }
+
     const buildQuery = (ownerColumn) => {
       let query = supabase.from('profiles').select('*');
 
@@ -298,7 +305,7 @@ const createProfileCollection = () => ({
     if (ownerId !== undefined) {
       const { data: ownerRows, error: ownerError } = await buildQuery('created_by_id');
       if (ownerError) {
-        if (!isMissingColumnError(ownerError)) {
+        if (!isMissingColumnError(ownerError) && !isInvalidUuidSyntaxError(ownerError)) {
           primaryError = ownerError;
         }
       } else {
@@ -307,7 +314,7 @@ const createProfileCollection = () => ({
 
       const { data: fallbackRows, error: fallbackError } = await buildQuery('user_id');
       if (fallbackError) {
-        if (!isMissingColumnError(fallbackError) && !primaryError) {
+        if (!isMissingColumnError(fallbackError) && !isInvalidUuidSyntaxError(fallbackError) && !primaryError) {
           primaryError = fallbackError;
         }
       } else {
@@ -328,17 +335,20 @@ const createProfileCollection = () => ({
     return uniqueById(rows).map(mapProfileRowToEntity);
   },
   get: async (id) => {
+    const idLooksLikeUuid = isLikelyUuid(id);
     const lookups = [
-      supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
-      supabase.from('profiles').select('*').eq('created_by_id', id).maybeSingle(),
-      supabase.from('profiles').select('*').eq('user_id', id).maybeSingle(),
+      ...(idLooksLikeUuid ? [
+        supabase.from('profiles').select('*').eq('id', id).maybeSingle(),
+        supabase.from('profiles').select('*').eq('created_by_id', id).maybeSingle(),
+        supabase.from('profiles').select('*').eq('user_id', id).maybeSingle(),
+      ] : []),
       supabase.from('profiles').select('*').ilike('username', String(id || '').trim()).maybeSingle(),
     ];
 
     for (const lookup of lookups) {
       const { data, error } = await lookup;
       if (error) {
-        if (isMissingColumnError(error)) {
+        if (isMissingColumnError(error) || isInvalidUuidSyntaxError(error)) {
           continue;
         }
         throw error;
@@ -505,6 +515,13 @@ const isMissingColumnError = (error) => {
   return message.includes('column') && message.includes('does not exist');
 };
 
+const isInvalidUuidSyntaxError = (error) => {
+  const message = String(error?.message || error?.details || '').toLowerCase();
+  return message.includes('invalid input syntax for type uuid');
+};
+
+const isLikelyUuid = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+
 const uniqueById = (rows = []) => {
   const map = new Map();
   for (const row of rows) {
@@ -669,6 +686,10 @@ const createFollowCollection = () => ({
     const followingId = criteria.following_id ?? criteria.following_user_id;
     const followingUsername = criteria.following_username;
 
+    if ((ownerId !== undefined && !isLikelyUuid(ownerId)) || (followingId !== undefined && !isLikelyUuid(followingId))) {
+      return [];
+    }
+
     const attempts = [
       { ownerColumn: 'created_by_id', followingColumn: 'following_id' },
       { ownerColumn: 'user_id', followingColumn: 'following_user_id' },
@@ -699,7 +720,7 @@ const createFollowCollection = () => ({
 
       const { data, error } = await query;
       if (error) {
-        if (isMissingColumnError(error)) {
+        if (isMissingColumnError(error) || isInvalidUuidSyntaxError(error)) {
           continue;
         }
         lastError = error;
@@ -898,6 +919,10 @@ const createReviewCollection = () => ({
     const entries = Object.entries(criteria);
     const ownerId = criteria.created_by_id ?? criteria.user_id;
 
+    if (ownerId !== undefined && !isLikelyUuid(ownerId)) {
+      return [];
+    }
+
     const buildQuery = (ownerColumn) => {
       let query = supabase.from('reviews').select('*');
 
@@ -925,7 +950,7 @@ const createReviewCollection = () => ({
     if (ownerId !== undefined) {
       const { data: firstRows, error: firstError } = await buildQuery('created_by_id');
       if (firstError) {
-        if (!isMissingColumnError(firstError)) {
+        if (!isMissingColumnError(firstError) && !isInvalidUuidSyntaxError(firstError)) {
           primaryError = firstError;
         }
       } else {
@@ -934,7 +959,7 @@ const createReviewCollection = () => ({
 
       const { data: fallbackRows, error: fallbackError } = await buildQuery('user_id');
       if (fallbackError) {
-        if (!isMissingColumnError(fallbackError) && !primaryError) {
+        if (!isMissingColumnError(fallbackError) && !isInvalidUuidSyntaxError(fallbackError) && !primaryError) {
           primaryError = fallbackError;
         }
       } else {
