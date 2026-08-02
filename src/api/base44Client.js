@@ -992,6 +992,78 @@ const createReviewCollection = () => ({
 
     return limitedRows;
   },
+  paginateByOwner: async ({ ownerId, limit = 50, cursor = null, sort = 'newest' } = {}) => {
+    if (!ownerId || !isLikelyUuid(ownerId)) {
+      return {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      };
+    }
+
+    const pageSize = Math.max(1, Math.min(Number(limit) || 50, 100));
+    const ascending = sort === 'oldest';
+    const cursorUpdatedAt = String(cursor?.updatedAt || '').trim();
+
+    const executeOwnerQuery = async (ownerColumn) => {
+      let query = supabase
+        .from('reviews')
+        .select('*')
+        .eq(ownerColumn, ownerId)
+        .order('updated_at', { ascending })
+        .order('id', { ascending })
+        .limit(pageSize + 1);
+
+      if (cursorUpdatedAt) {
+        query = ascending
+          ? query.gt('updated_at', cursorUpdatedAt)
+          : query.lt('updated_at', cursorUpdatedAt);
+      }
+
+      return query;
+    };
+
+    const attempts = ['created_by_id', 'user_id'];
+    let rows = [];
+    let primaryError = null;
+
+    for (const ownerColumn of attempts) {
+      const { data, error } = await executeOwnerQuery(ownerColumn);
+      if (error) {
+        if (isMissingColumnError(error) || isInvalidUuidSyntaxError(error)) {
+          continue;
+        }
+        if (!primaryError) {
+          primaryError = error;
+        }
+        continue;
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+        rows = data;
+        break;
+      }
+    }
+
+    if (rows.length === 0 && primaryError) {
+      throw primaryError;
+    }
+
+    const hasMore = rows.length > pageSize;
+    const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
+    await migrateReviewRowsToCanonicalRatings(pageRows);
+
+    const mapped = pageRows.map(mapReviewRowToEntity);
+    const last = pageRows[pageRows.length - 1] || null;
+
+    return {
+      items: mapped,
+      nextCursor: hasMore && last?.updated_at
+        ? { updatedAt: last.updated_at, id: last.id || null }
+        : null,
+      hasMore,
+    };
+  },
   get: async (id) => {
     const { data, error } = await supabase
       .from('reviews')

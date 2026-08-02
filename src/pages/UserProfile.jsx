@@ -82,6 +82,11 @@ export default function UserProfile() {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState("");
   const [selectedYear, setSelectedYear] = useState("all");
+  const [sortOption, setSortOption] = useState("newest");
+  const [reviewOwnerId, setReviewOwnerId] = useState("");
+  const [reviewCursor, setReviewCursor] = useState(null);
+  const [hasMoreReviews, setHasMoreReviews] = useState(false);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [followRecord, setFollowRecord] = useState(null);
   const [followers, setFollowers] = useState([]);
   const [following, setFollowing] = useState([]);
@@ -198,7 +203,7 @@ export default function UserProfile() {
 
       const [profilesResult, userReviewsResult, myFollowsResult, userFoldersResult, followersOfUserResult, followingByUserResult] = await Promise.allSettled([
         resolvedProfile ? Promise.resolve([resolvedProfile]) : db.entities.Profile.filter({ created_by_id: resolvedUserId }),
-        db.entities.Review.filter({ created_by_id: resolvedUserId }, "-updated_date", 50),
+        db.entities.Review.paginateByOwner({ ownerId: resolvedUserId, limit: 50, cursor: null, sort: "newest" }),
         currentUser
           ? db.entities.Follow.filter({ created_by_id: currentUser.id, following_id: resolvedUserId })
           : Promise.resolve([]),
@@ -208,7 +213,9 @@ export default function UserProfile() {
       ]);
 
       const profiles = profilesResult.status === "fulfilled" ? profilesResult.value : [];
-      const userReviews = userReviewsResult.status === "fulfilled" ? userReviewsResult.value : [];
+      const userReviewsPage = userReviewsResult.status === "fulfilled"
+        ? userReviewsResult.value
+        : { items: [], hasMore: false, nextCursor: null };
       const myFollows = myFollowsResult.status === "fulfilled" ? myFollowsResult.value : [];
       const userFolders = userFoldersResult.status === "fulfilled" ? userFoldersResult.value : [];
       const followersOfUser = followersOfUserResult.status === "fulfilled" ? followersOfUserResult.value : [];
@@ -271,9 +278,17 @@ export default function UserProfile() {
       });
 
       const profile = profiles[0] || resolvedProfile || null;
-      let resolvedReviews = userReviews;
+      let resolvedReviews = userReviewsPage.items || [];
+      let nextCursor = userReviewsPage.nextCursor || null;
+      let hasMore = Boolean(userReviewsPage.hasMore);
+      let ownerForReviews = resolvedUserId;
+
       if (resolvedReviews.length === 0 && profile?.id && profile.id !== profile.created_by_id) {
-        resolvedReviews = await db.entities.Review.filter({ created_by_id: profile.id }, "-updated_date", 50);
+        const fallbackPage = await db.entities.Review.paginateByOwner({ ownerId: profile.id, limit: 50, cursor: null, sort: "newest" });
+        resolvedReviews = fallbackPage.items || [];
+        nextCursor = fallbackPage.nextCursor || null;
+        hasMore = Boolean(fallbackPage.hasMore);
+        ownerForReviews = profile.id;
       }
 
       if (profiles.length > 0) setProfile(profiles[0]);
@@ -283,6 +298,9 @@ export default function UserProfile() {
         setViewerRatingDisplayPreference(getRatingDisplayPreference(viewerProfiles[0] || null));
       }
       setReviews(resolvedReviews);
+      setReviewOwnerId(String(ownerForReviews || ""));
+      setReviewCursor(nextCursor);
+      setHasMoreReviews(hasMore);
       setFolders(userFolders);
       setFollowers(followerProfiles);
       setFollowing(followingEntries);
@@ -292,6 +310,7 @@ export default function UserProfile() {
     } catch (e) {
       console.error(e);
     } finally {
+      setLoadingMoreReviews(false);
       setLoading(false);
     }
   }, [routeIdentifier, normalizedRouteIdentifier, currentUser, navigate, resolveProfile]);
@@ -364,6 +383,31 @@ export default function UserProfile() {
   const visibleReviews = selectedYear === "all"
     ? folderScopedReviews
     : folderScopedReviews.filter((review) => String(review?.release_year || "").includes(selectedYear));
+  const sortedVisibleReviews = useMemo(() => {
+    const items = [...visibleReviews];
+
+    if (sortOption === "oldest") {
+      return items.sort((a, b) => String(a.updated_at || a.created_at || "").localeCompare(String(b.updated_at || b.created_at || "")));
+    }
+
+    if (sortOption === "artist_az") {
+      return items.sort((a, b) => {
+        const artistCompare = String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" });
+        if (artistCompare !== 0) return artistCompare;
+        return String(a.album_title || "").localeCompare(String(b.album_title || ""), undefined, { sensitivity: "base" });
+      });
+    }
+
+    if (sortOption === "album_az") {
+      return items.sort((a, b) => {
+        const albumCompare = String(a.album_title || "").localeCompare(String(b.album_title || ""), undefined, { sensitivity: "base" });
+        if (albumCompare !== 0) return albumCompare;
+        return String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" });
+      });
+    }
+
+    return items.sort((a, b) => String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || "")));
+  }, [visibleReviews, sortOption]);
   const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) || null;
   const formattedLastUpdated = useMemo(() => {
     if (!lastUpdatedAt) return "";
@@ -379,6 +423,44 @@ export default function UserProfile() {
   const handleSelectFolder = (folderId) => {
     setSelectedFolderId(folderId);
     setSelectedYear("all");
+  };
+
+  const handleLoadMoreReviews = () => {
+    if (loadingMoreReviews || !hasMoreReviews || !reviewOwnerId || !reviewCursor?.updatedAt) return;
+
+    const run = async () => {
+      setLoadingMoreReviews(true);
+      try {
+        const page = await db.entities.Review.paginateByOwner({
+          ownerId: reviewOwnerId,
+          limit: 50,
+          cursor: reviewCursor,
+          sort: "newest",
+        });
+
+        const incoming = page.items || [];
+        setReviews((prev) => {
+          const seen = new Set(prev.map((item) => item.id));
+          const merged = [...prev];
+          for (const item of incoming) {
+            if (!item?.id || seen.has(item.id)) continue;
+            seen.add(item.id);
+            merged.push(item);
+          }
+          return merged;
+        });
+
+        setReviewCursor(page.nextCursor || null);
+        setHasMoreReviews(Boolean(page.hasMore));
+      } catch (e) {
+        console.error(e);
+        toast({ variant: "destructive", title: "Could not load more", description: "Please try again." });
+      } finally {
+        setLoadingMoreReviews(false);
+      }
+    };
+
+    run();
   };
 
   const socialEntries = SOCIAL_KEYS
@@ -655,11 +737,26 @@ export default function UserProfile() {
 
         return (
           <div key="reviews">
-            <div className="flex items-center gap-2 mb-4">
-              <Star className="w-4 h-4 text-stone-400" />
-              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
-                {selectedFolder ? `${selectedFolder.name}` : "All reviews"}
-              </h2>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-stone-400" />
+                <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
+                  {selectedFolder ? `${selectedFolder.name}` : "All reviews"}
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/40">Sort</span>
+                <select
+                  value={sortOption}
+                  onChange={(event) => setSortOption(event.target.value)}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs text-white outline-none"
+                >
+                  <option value="newest" className="bg-zinc-900">Newest</option>
+                  <option value="oldest" className="bg-zinc-900">Oldest</option>
+                  <option value="artist_az" className="bg-zinc-900">Artist A-Z</option>
+                  <option value="album_az" className="bg-zinc-900">Album A-Z</option>
+                </select>
+              </div>
             </div>
             {availableYears.length > 0 && (
               <div className="mb-4 flex flex-wrap gap-2">
@@ -680,42 +777,57 @@ export default function UserProfile() {
                 ))}
               </div>
             )}
-            {visibleReviews.length === 0 ? (
+            {sortedVisibleReviews.length === 0 ? (
               <div className="text-center py-12 text-white/30 border border-white/5 rounded-2xl">
                 <Disc className="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">No reviews for this folder and year yet.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {visibleReviews.map((review) => (
-                  (() => {
-                    const rating = formatRatingDisplay(review.album_rating, viewerRatingDisplayPreference);
-                    return (
-                  <button
-                    key={review.id}
-                    onClick={() => navigate(`/review/${review.id}`)}
-                    className="group flex items-center gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all text-left"
-                  >
-                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
-                      {review.album_art_url && (
-                        <Image src={review.album_art_url} alt={review.album_title} fittingType="fill" className="w-full h-full" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-white truncate">{review.album_title || "Untitled album"}</p>
-                      <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
-                      <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
-                        <span className="rounded bg-white/10 px-1.5 py-0.5">{rating.value}</span>
-                        {rating.suffix && <span>{rating.suffix}</span>}
-                        {review.release_year && <span>{review.release_year}</span>}
-                        <span>{review.tracks?.length || 0} tracks</span>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {sortedVisibleReviews.map((review) => (
+                    (() => {
+                      const rating = formatRatingDisplay(review.album_rating, viewerRatingDisplayPreference);
+                      return (
+                    <button
+                      key={review.id}
+                      onClick={() => navigate(`/review/${review.id}`)}
+                      className="group flex items-center gap-4 p-3 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all text-left"
+                    >
+                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
+                        {review.album_art_url && (
+                          <Image src={review.album_art_url} alt={review.album_title} fittingType="fill" className="w-full h-full" />
+                        )}
                       </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-white/25 group-hover:text-white/50 transition-colors" />
-                  </button>
-                    );
-                  })()
-                ))}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white truncate">{review.album_title || "Untitled album"}</p>
+                        <p className="text-xs text-white/50 truncate">{review.artist || "Unknown artist"}</p>
+                        <div className="mt-1.5 flex items-center gap-2 text-xs text-white/40">
+                          <span className="rounded bg-white/10 px-1.5 py-0.5">{rating.value}</span>
+                          {rating.suffix && <span>{rating.suffix}</span>}
+                          {review.release_year && <span>{review.release_year}</span>}
+                          <span>{review.tracks?.length || 0} tracks</span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-white/25 group-hover:text-white/50 transition-colors" />
+                    </button>
+                      );
+                    })()
+                  ))}
+                </div>
+
+                {hasMoreReviews && (
+                  <div className="flex justify-center">
+                    <button
+                      onClick={handleLoadMoreReviews}
+                      disabled={loadingMoreReviews}
+                      className="inline-flex items-center rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/80 hover:bg-white/[0.08] disabled:opacity-60"
+                    >
+                      {loadingMoreReviews ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                      {loadingMoreReviews ? "Loading more..." : `Load More Reviews (${reviews.length} loaded)`}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
