@@ -151,6 +151,26 @@ export default function UserProfile() {
       let resolvedProfile = await resolveProfile(routeIdentifier);
       let resolvedUserId = resolvedProfile?.created_by_id || routeIdentifier;
 
+      if (!resolvedProfile && routeIdentifier) {
+        try {
+          const allProfiles = await db.entities.Profile.list();
+          const routeKey = normalizeRouteIdentifier(routeIdentifier);
+          const matched = allProfiles.find((entry) => {
+            const usernameKey = normalizeRouteIdentifier(entry?.username || "");
+            return usernameKey === routeKey
+              || String(entry?.created_by_id || "") === routeIdentifier
+              || String(entry?.id || "") === routeIdentifier;
+          });
+
+          if (matched) {
+            resolvedProfile = matched;
+            resolvedUserId = matched.created_by_id || matched.id || routeIdentifier;
+          }
+        } catch {
+          // Keep existing fallback behavior if list lookup fails.
+        }
+      }
+
       if (!resolvedProfile && normalizedRouteIdentifier) {
         try {
           const recentReviews = await db.entities.Review.list("-updated_date", 250);
