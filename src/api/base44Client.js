@@ -508,8 +508,17 @@ const isMissingColumnError = (error) => {
 const uniqueById = (rows = []) => {
   const map = new Map();
   for (const row of rows) {
-    if (!row?.id) continue;
-    map.set(row.id, row);
+    if (!row) continue;
+
+    const fallbackKey = [
+      row.created_by_id || row.user_id || '',
+      row.following_id || row.following_user_id || '',
+      row.spotify_album_id || row.album_title || row.username || '',
+      row.created_at || row.updated_at || '',
+    ].join('|');
+
+    const key = row.id ? `id:${row.id}` : `fallback:${fallbackKey}`;
+    map.set(key, row);
   }
   return [...map.values()];
 };
