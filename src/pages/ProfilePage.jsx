@@ -22,6 +22,11 @@ import { Loader2, Save, AtSign, Trash2, Upload, FolderPlus, User, ArrowUp, Arrow
 import DiscordConnect from "@/components/DiscordConnect";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
 import { normalizeRatingDisplayPreference } from "@/utils/ratings";
+import {
+  findBestAlbumMatchForImport,
+  getNeedsReviewReasonLabel,
+  parseAotyCsv,
+} from "@/utils/import/aotyCsvImport";
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -47,8 +52,12 @@ export default function ProfilePage() {
   const [deleting, setDeleting] = useState(false);
   const [discordChannelId, setDiscordChannelId] = useState("");
   const [discordChannelName, setDiscordChannelName] = useState("");
-  const [importUrl, setImportUrl] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importFileName, setImportFileName] = useState("");
+  const [importSummary, setImportSummary] = useState(null);
+  const [needsReviewRows, setNeedsReviewRows] = useState([]);
+  const [skippedExistingRows, setSkippedExistingRows] = useState([]);
   const [folders, setFolders] = useState([]);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -255,152 +264,228 @@ export default function ProfilePage() {
     navigate(`/user/${slug}`);
   };
 
-  const extractImportQuery = (value) => {
-    const trimmed = value.trim();
-    if (!trimmed) return "";
-
-    try {
-      const url = new URL(trimmed);
-      const pathSegments = decodeURIComponent(url.pathname)
-        .split("/")
-        .filter(Boolean);
-
-      if (url.hostname.includes("rateyourmusic")) {
-        const albumIndex = pathSegments.findIndex((segment) => ["album", "ep", "lp", "single", "release"].includes(segment.toLowerCase()));
-        if (albumIndex >= 0) {
-          const queryParts = pathSegments.slice(albumIndex + 1).filter((segment) => !["album", "ep", "lp", "single", "release"].includes(segment.toLowerCase()));
-          if (queryParts.length) {
-            return queryParts.slice(-2).join(" ");
-          }
-        }
-        return pathSegments.slice(-2).join(" ");
-      }
-
-      if (url.hostname.includes("albumoftheyear")) {
-        const albumIndex = pathSegments.findIndex((segment) => segment.toLowerCase() === "album");
-        if (albumIndex >= 0) {
-          const queryParts = pathSegments.slice(albumIndex + 1);
-          if (queryParts.length) {
-            return queryParts.join(" ");
-          }
-        }
-      }
-
-      const lastSegment = pathSegments[pathSegments.length - 1];
-      return lastSegment ? lastSegment.replace(/\.(html?|php|asp|aspx)$/i, "") : trimmed;
-    } catch (e) {
-      return trimmed;
-    }
+  const buildImportedNotes = (entry) => {
+    const prefix = entry.reviewText ? `${entry.reviewText}\n\n` : "";
+    const dateText = entry.dateReviewed ? `Date reviewed: ${entry.dateReviewed}` : "Date reviewed: unavailable";
+    return `${prefix}Imported from Album of the Year CSV. ${dateText}`;
   };
 
-  const handleImportReviews = async () => {
-    if (!importUrl.trim()) {
-      toast({ variant: "destructive", title: "Paste a profile URL or album title first" });
+  const handleCsvFileSelected = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportFile(file);
+    setImportFileName(file.name || "");
+    setImportSummary(null);
+    setNeedsReviewRows([]);
+    setSkippedExistingRows([]);
+    event.target.value = "";
+  };
+
+  const runCsvImport = async ({ dryRun = false } = {}) => {
+    const file = importFile;
+    if (!file) {
+      toast({ variant: "destructive", title: "No CSV selected", description: "Choose an Album of the Year CSV first." });
+      return;
+    }
+
+    if (!user?.id) {
+      toast({ variant: "destructive", title: "Login required", description: "You need to be logged in before importing." });
       return;
     }
 
     setImporting(true);
+    setImportSummary(null);
+    setNeedsReviewRows([]);
+    setSkippedExistingRows([]);
+
     try {
-      const rawValue = importUrl.trim();
-      let source = "external service";
-      try {
-        const url = new URL(rawValue);
-        source = url.hostname.includes("rateyourmusic")
-          ? "Rate Your Music"
-          : url.hostname.includes("albumoftheyear")
-            ? "Album of the Year"
-            : "external service";
-      } catch (e) {
-        // treat plain text titles as generic imports
+      const csvText = await file.text();
+      const parsed = parseAotyCsv(csvText);
+
+      if (parsed.missingColumns.length > 0) {
+        toast({
+          variant: "destructive",
+          title: "Unsupported CSV format",
+          description: `Missing required columns: ${parsed.missingColumns.join(", ")}`,
+        });
+        return;
       }
 
-      const importResult = await db.functions.invoke("importProfile", { url: rawValue });
-      const preview = importResult?.data?.preview || [];
-      const isProfileImport = importResult?.data?.ok && preview.length > 0 && (importResult?.data?.source !== "generic" || /\/user\/|\/~/i.test(rawValue));
+      if (parsed.entries.length === 0) {
+        toast({ variant: "destructive", title: "No review rows found", description: "The CSV does not contain importable review history rows." });
+        return;
+      }
 
-      const createImportedReview = async (candidate, index = 0) => {
-        const searchQuery = candidate?.title || candidate?.href || rawValue;
-        let importedAlbum = null;
-        let importedTracks = [];
-        let importRating = candidate?.rating;
-        let importNotes = candidate?.notes;
+      const existingReviews = await db.entities.Review.filter({ created_by_id: user.id });
+      const existingSpotifyAlbumIds = new Set(
+        existingReviews
+          .map((review) => String(review.spotify_album_id || "").trim())
+          .filter(Boolean)
+      );
 
+      const localNeedsReview = [];
+      const localSkippedExisting = [];
+      let importedCount = 0;
+      let wouldImportCount = 0;
+
+      for (const entry of parsed.entries) {
+        const searchQuery = `${entry.artist} ${entry.albumTitle}`.trim();
+        if (!searchQuery) {
+          localNeedsReview.push({ ...entry, reason: "missing_artist_or_title" });
+          continue;
+        }
+
+        let candidates = [];
         try {
           const searchResult = await db.functions.invoke("spotifySearch", { query: searchQuery });
-          importedAlbum = (searchResult?.data?.albums || [])[0] || null;
-
-          if (importedAlbum?.id) {
-            const tracksResult = await db.functions.invoke("spotifyAlbumTracks", { albumId: importedAlbum.id });
-            importedTracks = (tracksResult?.data?.tracks || []).map((track) => ({
-              position: track.position,
-              title: track.title,
-              rating: 0,
-            }));
-          }
-        } catch (e) {
-          console.error(e);
+          candidates = searchResult?.data?.albums || [];
+        } catch {
+          localNeedsReview.push({ ...entry, reason: "search_failed" });
+          continue;
         }
 
-        const albumRating = Number.isFinite(importRating) ? Math.min(10, Math.max(0, importRating)) : 8;
-
-        return {
-          id: `import-${Date.now()}-${index}`,
-          created_by_id: user.id,
-          username: username.trim() || "Imported user",
-          album_title: importedAlbum?.title || searchQuery || `Imported from ${source}`,
-          artist: importedAlbum?.artist || "Imported review",
-          album_art_url: importedAlbum?.artwork_url || "",
-          release_year: importedAlbum?.release_year || "",
-          album_rating: albumRating,
-          use_manual_rating: false,
-          manual_rating: 0,
-          notes: importNotes
-            ? `${importNotes}`
-            : `Imported from ${source}: ${rawValue}${searchQuery ? ` • ${searchQuery}` : ""}`,
-          tracks: importedTracks,
-          reactions: [],
-          comments: [],
-          created_at: new Date().toISOString(),
-          source_name: source,
-          source_url: rawValue,
-          import_title: searchQuery || "",
-        };
-      };
-
-      if (isProfileImport) {
-        const importedReviews = [];
-        for (const [index, candidate] of preview.entries()) {
-          const reviewPayload = await createImportedReview(candidate, index);
-          await db.entities.Review.create(reviewPayload);
-          importedReviews.push(reviewPayload);
-        }
-
-        if (importedReviews.length > 0) {
-          toast({
-            title: `Imported ${importedReviews.length} reviews`,
-            description: `Added ${importedReviews.length} reviews from ${source}.`,
+        const match = findBestAlbumMatchForImport(entry, candidates);
+        if (match.status !== "matched" || !match.album?.id) {
+          localNeedsReview.push({
+            ...entry,
+            reason: match.reason || "no_match",
+            candidatePreview: (match.candidates || []).map((candidate) => `${candidate.artist} - ${candidate.title}`),
           });
-        } else {
-          toast({ title: "No reviews found", description: "We couldn’t discover albums from that profile URL yet." });
+          continue;
         }
-      } else {
-        const searchQuery = extractImportQuery(rawValue);
-        const importedReview = await createImportedReview({ title: searchQuery || rawValue, href: rawValue, rating: undefined, notes: undefined });
-        await db.entities.Review.create(importedReview);
-        toast({
-          title: "Review imported",
-          description: importedReview.album_title
-            ? `Added ${importedReview.album_title} with album details and tracks.`
-            : `Added a review from ${source}.`,
-        });
+
+        if (existingSpotifyAlbumIds.has(match.album.id)) {
+          localSkippedExisting.push(entry);
+          continue;
+        }
+
+        let albumMetadata = null;
+        let albumTracks = [];
+        try {
+          const metadataResult = await db.functions.invoke("spotifyAlbumTracks", { albumId: match.album.id });
+          albumMetadata = metadataResult?.data?.album || null;
+          albumTracks = (metadataResult?.data?.tracks || []).map((track) => ({
+            position: track.position,
+            title: track.title || track.name || track.track_name || "",
+            rating: 0,
+          }));
+        } catch {
+          localNeedsReview.push({ ...entry, reason: "metadata_load_failed" });
+          continue;
+        }
+
+        if (!albumMetadata?.id || !albumMetadata?.title || !albumMetadata?.artist) {
+          localNeedsReview.push({ ...entry, reason: "metadata_load_failed" });
+          continue;
+        }
+
+        const importedRating = Number.isFinite(entry.rating) ? entry.rating : 0;
+        const hasManualRating = Number.isFinite(entry.rating);
+
+        if (dryRun) {
+          wouldImportCount += 1;
+          continue;
+        }
+
+        try {
+          await db.entities.Review.create({
+            created_by_id: user.id,
+            username: username.trim() || profile?.username || "",
+            spotify_album_id: albumMetadata.id,
+            album_title: albumMetadata.title,
+            artist: albumMetadata.artist,
+            album_art_url: albumMetadata.artwork_url || "",
+            release_year: albumMetadata.release_year || "",
+            tracks: albumTracks,
+            album_rating: importedRating,
+            use_manual_rating: hasManualRating,
+            manual_rating: hasManualRating ? importedRating : 0,
+            notes: buildImportedNotes(entry),
+            reactions: [],
+            comments: [],
+          });
+          existingSpotifyAlbumIds.add(albumMetadata.id);
+          importedCount += 1;
+        } catch {
+          localNeedsReview.push({ ...entry, reason: "create_review_failed" });
+        }
       }
 
-      setImportUrl("");
+      const summary = {
+        dryRun,
+        totalRows: parsed.entries.length,
+        importedCount,
+        wouldImportCount,
+        skippedExistingCount: localSkippedExisting.length,
+        needsReviewCount: localNeedsReview.length,
+      };
+
+      setImportSummary(summary);
+      setNeedsReviewRows(localNeedsReview);
+      setSkippedExistingRows(localSkippedExisting);
+
+      if (dryRun) {
+        toast({
+          title: "Dry import complete",
+          description: `${wouldImportCount} would import, ${localSkippedExisting.length} already reviewed, ${localNeedsReview.length} need review.`,
+        });
+      } else {
+        toast({
+          title: "CSV import complete",
+          description: `${importedCount} imported, ${localSkippedExisting.length} already reviewed, ${localNeedsReview.length} need review.`,
+        });
+      }
     } catch (e) {
-      toast({ variant: "destructive", title: "Import failed", description: e.message });
+      toast({ variant: "destructive", title: "Import failed", description: e.message || "Could not import CSV." });
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleImportReviews = async () => runCsvImport({ dryRun: false });
+  const handleDryRunImport = async () => runCsvImport({ dryRun: true });
+
+  const escapeCsvCell = (value) => {
+    const text = String(value || "");
+    if (!/[",\n\r]/.test(text)) return text;
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+
+  const handleExportNeedsReviewCsv = () => {
+    if (needsReviewRows.length === 0) {
+      toast({ variant: "destructive", title: "Nothing to export", description: "There are no Needs Review rows to export." });
+      return;
+    }
+
+    const header = ["Row", "Artist", "Album Title", "Rating", "Review Text", "Date Reviewed", "Album Type", "Year", "Reason", "Candidate Preview"];
+    const lines = [header.map(escapeCsvCell).join(",")];
+
+    for (const row of needsReviewRows) {
+      const cells = [
+        row.rowNumber,
+        row.artist,
+        row.albumTitle,
+        row.ratingRaw,
+        row.reviewText,
+        row.dateReviewed,
+        row.albumType,
+        row.year,
+        getNeedsReviewReasonLabel(row.reason),
+        Array.isArray(row.candidatePreview) ? row.candidatePreview.join(" | ") : "",
+      ];
+      lines.push(cells.map(escapeCsvCell).join(","));
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = downloadUrl;
+    anchor.download = `needs-review-${Date.now()}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(downloadUrl);
   };
 
   const handleDeleteAccount = async () => {
@@ -748,24 +833,92 @@ export default function ProfilePage() {
 
       <div className="mt-8 pt-8 border-t border-white/5">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <h3 className="text-sm font-semibold text-white/80 mb-2">Import your existing reviews</h3>
-          <p className="text-sm text-white/50 mb-4">Paste a profile URL from another service and we’ll try to discover the albums on that profile and bring them into your new account here.</p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Input
-              value={importUrl}
-              onChange={(e) => setImportUrl(e.target.value)}
-              placeholder="Paste a profile URL or album link"
-              className="bg-white/[0.03] border-white/10 text-white placeholder:text-white/25"
-            />
+          <h3 className="text-sm font-semibold text-white/80 mb-2">Import music history (CSV)</h3>
+          <p className="text-sm text-white/50 mb-4">
+            Upload your Album of the Year CSV. We import your review history, then resolve each album using SpinRate metadata providers.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-4 py-2.5 text-sm text-white/70 transition hover:border-stone-500/40 hover:text-white sm:flex-1">
+              <Upload className="h-4 w-4" />
+              <span>{importFileName ? `Selected: ${importFileName}` : "Choose Album of the Year CSV"}</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleCsvFileSelected}
+                disabled={importing}
+              />
+            </label>
             <Button
-              onClick={handleImportReviews}
-              disabled={importing}
-              className="bg-gradient-to-r from-stone-600 to-slate-600 text-white border-0"
+              variant="outline"
+              onClick={handleDryRunImport}
+              disabled={importing || !importFile}
+              className="border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
             >
               {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              {importing ? "Importing..." : "Import profile"}
+              Run dry import
+            </Button>
+            <Button
+              onClick={handleImportReviews}
+              disabled={importing || !importFile}
+              className="bg-gradient-to-r from-stone-600 to-slate-600 hover:from-stone-500 hover:to-slate-500 text-white border-0"
+            >
+              {importing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Import reviews
             </Button>
           </div>
+
+          {importSummary && (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/75 space-y-1">
+              <p>Mode: {importSummary.dryRun ? "Dry run (no reviews created)" : "Live import"}</p>
+              <p>Total rows: {importSummary.totalRows}</p>
+              {importSummary.dryRun && <p>Would import: {importSummary.wouldImportCount}</p>}
+              <p>Imported: {importSummary.importedCount}</p>
+              <p>Skipped (already reviewed): {importSummary.skippedExistingCount}</p>
+              <p>Needs review: {importSummary.needsReviewCount}</p>
+            </div>
+          )}
+
+          {needsReviewRows.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-sm font-semibold text-amber-200">Needs Review</h4>
+                <Button
+                  variant="outline"
+                  onClick={handleExportNeedsReviewCsv}
+                  className="h-8 border-amber-400/30 bg-amber-500/10 px-3 text-xs text-amber-100 hover:bg-amber-500/20"
+                >
+                  Export CSV
+                </Button>
+              </div>
+              <p className="text-xs text-white/45 mb-2">These rows were not imported to avoid bad album matches.</p>
+              <div className="space-y-2 max-h-64 overflow-auto pr-1">
+                {needsReviewRows.map((row) => (
+                  <div key={`needs-review-${row.rowNumber}-${row.artist}-${row.albumTitle}`} className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+                    <p className="text-sm text-white/90">{row.artist} - {row.albumTitle}</p>
+                    <p className="text-xs text-amber-200">{getNeedsReviewReasonLabel(row.reason)}</p>
+                    {Array.isArray(row.candidatePreview) && row.candidatePreview.length > 0 && (
+                      <p className="text-xs text-white/55">Candidates: {row.candidatePreview.join(" | ")}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {skippedExistingRows.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-sm font-semibold text-white/80">Skipped Existing Reviews</h4>
+              <p className="text-xs text-white/45 mb-2">These albums were already reviewed by this account.</p>
+              <div className="space-y-2 max-h-52 overflow-auto pr-1">
+                {skippedExistingRows.map((row) => (
+                  <div key={`existing-review-${row.rowNumber}-${row.artist}-${row.albumTitle}`} className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/80">
+                    {row.artist} - {row.albumTitle}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
