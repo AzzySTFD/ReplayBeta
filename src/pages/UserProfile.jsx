@@ -11,6 +11,7 @@ import { formatRatingDisplay, getRatingDisplayPreference } from "@/utils/ratings
 import { ArrowLeft, Loader2, UserPlus, UserCheck, Disc, Star, ChevronRight, Globe, Instagram, Youtube, Twitch, ExternalLink, FolderOpen, Pencil } from "lucide-react";
 
 const normalizeHandle = (value = "") => value.replace(/^@+/, "").trim();
+const normalizeRouteIdentifier = (value = "") => normalizeHandle(decodeURIComponent(String(value || ""))).toLowerCase();
 const SOCIAL_KEYS = ["instagram", "twitter", "tiktok", "twitch", "youtube", "kick", "website"];
 const DEFAULT_SECTION_ORDER = ["socials", "folders", "reviews"];
 const PROFILE_CACHE_TTL_MS = 60 * 1000;
@@ -72,6 +73,7 @@ const buildSocialHref = (key, value = "") => {
 export default function UserProfile() {
   const params = useParams();
   const routeIdentifier = params.userId || params.username || "";
+  const normalizedRouteIdentifier = normalizeRouteIdentifier(routeIdentifier);
   const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -91,23 +93,52 @@ export default function UserProfile() {
   const resolveProfile = useCallback(async (value) => {
     if (!value) return null;
 
-    if (currentUser?.id && value === currentUser.id) {
+    const rawValue = String(value || "").trim();
+    const normalizedValue = normalizeRouteIdentifier(rawValue);
+    const candidateValues = [...new Set([
+      rawValue,
+      decodeURIComponent(rawValue),
+      normalizeHandle(rawValue),
+      normalizedValue,
+    ].map((entry) => String(entry || "").trim()).filter(Boolean))];
+
+    if (currentUser?.id && candidateValues.includes(currentUser.id)) {
       const myProfile = await db.entities.Profile.filter({ created_by_id: currentUser.id });
       if (myProfile[0]) return myProfile[0];
     }
 
-    const byOwner = await db.entities.Profile.filter({ created_by_id: value });
-    if (byOwner[0]) return byOwner[0];
+    for (const candidate of candidateValues) {
+      const byOwner = await db.entities.Profile.filter({ created_by_id: candidate });
+      if (byOwner[0]) return byOwner[0];
+    }
 
-    const byId = await db.entities.Profile.get(value);
-    if (byId) return byId;
+    for (const candidate of candidateValues) {
+      const byId = await db.entities.Profile.get(candidate);
+      if (byId) return byId;
+    }
 
-    const byUsername = await db.entities.Profile.filter({ username: value });
-    if (byUsername[0]) return byUsername[0];
+    for (const candidate of candidateValues) {
+      const byUsername = await db.entities.Profile.filter({ username: candidate });
+      if (byUsername[0]) return byUsername[0];
+    }
+
+    try {
+      const allProfiles = await db.entities.Profile.list();
+      const bestMatch = allProfiles.find((entry) => {
+        const usernameKey = normalizeRouteIdentifier(entry?.username || "");
+        const displayNameKey = normalizeRouteIdentifier(entry?.display_name || "");
+        return usernameKey === normalizedValue || displayNameKey === normalizedValue;
+      });
+      if (bestMatch) return bestMatch;
+    } catch {
+      // Best-effort fallback.
+    }
 
     if (currentUser?.id) {
       const myProfile = await db.entities.Profile.filter({ created_by_id: currentUser.id });
-      if (myProfile[0] && myProfile[0].username === value) {
+      const myUsername = normalizeRouteIdentifier(myProfile[0]?.username || "");
+      const myDisplayName = normalizeRouteIdentifier(myProfile[0]?.display_name || "");
+      if (myProfile[0] && (myUsername === normalizedValue || myDisplayName === normalizedValue)) {
         return myProfile[0];
       }
     }
@@ -117,8 +148,24 @@ export default function UserProfile() {
 
   const loadData = useCallback(async () => {
     try {
-      const resolvedProfile = await resolveProfile(routeIdentifier);
-      const resolvedUserId = resolvedProfile?.created_by_id || routeIdentifier;
+      let resolvedProfile = await resolveProfile(routeIdentifier);
+      let resolvedUserId = resolvedProfile?.created_by_id || routeIdentifier;
+
+      if (!resolvedProfile && normalizedRouteIdentifier) {
+        try {
+          const recentReviews = await db.entities.Review.list("-updated_date", 250);
+          const reviewMatch = recentReviews.find((entry) => normalizeRouteIdentifier(entry?.username || "") === normalizedRouteIdentifier);
+          if (reviewMatch?.created_by_id) {
+            resolvedUserId = reviewMatch.created_by_id;
+            const byOwner = await db.entities.Profile.filter({ created_by_id: resolvedUserId });
+            if (byOwner[0]) {
+              resolvedProfile = byOwner[0];
+            }
+          }
+        } catch {
+          // Best-effort fallback.
+        }
+      }
 
       if (
         resolvedProfile?.username
@@ -227,7 +274,7 @@ export default function UserProfile() {
     } finally {
       setLoading(false);
     }
-  }, [routeIdentifier, currentUser, navigate, resolveProfile]);
+  }, [routeIdentifier, normalizedRouteIdentifier, currentUser, navigate, resolveProfile]);
 
   useEffect(() => {
     loadData();
